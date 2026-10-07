@@ -1,10 +1,12 @@
 // Renderer bootstrap: wire UI modules to the store.
 import { initMediaPool, importPaths } from './ui/mediaPool.js';
+import { initInspector } from './ui/inspector.js';
 import { initTimeline } from './audio/timeline.js';
 import { state, updateSettings } from './state.js';
 
 initMediaPool();
 initTimeline();
+initInspector();
 
 // Headless smoke test support (BVAPE_SMOKE=1 in main): auto-import files and report state.
 const smoke = await window.bvape.smokeFiles();
@@ -12,21 +14,24 @@ if (smoke.length) {
   await importPaths(smoke);
   const v = state.videos.find((x) => x.probe), m = state.music.find((x) => !x.error);
   if (v && m) {
-    updateSettings(v.id, { musicId: m.id, offsetMs: 1500, origVol: 0.5, musicVol: 1.5 });
-    const { engine } = await import('./audio/engine.js');
-    await new Promise((r) => setTimeout(r, 1500));
-    engine.play();
-    await new Promise((r) => setTimeout(r, 800));
+    const sel = document.getElementById('in-music');
+    sel.value = m.id; sel.dispatchEvent(new Event('change'));
+    const off = document.getElementById('in-offset'); off.value = '99'; off.dispatchEvent(new Event('change'));
+    const vol = document.getElementById('in-orig-vol'); vol.value = '150'; vol.dispatchEvent(new Event('input'));
+    const name = document.getElementById('in-output-name'); name.value = 'bad:name.'; name.dispatchEvent(new Event('input'));
+    const nameErr = document.getElementById('in-output-name-error').textContent;
+    name.dispatchEvent(new Event('blur'));
+    document.querySelector('.apply-all[data-apply="music"]').click();
+    await new Promise((r) => setTimeout(r, 1200));
     const blk = document.getElementById('music-block');
-    console.log('SMOKE_TL ' + JSON.stringify({ playing: engine.playing, pos: +engine.position.toFixed(2), dur: engine.duration,
-      block: { hidden: blk.hidden, left: blk.style.left, width: blk.style.width, trimmed: !document.getElementById('trimmed-badge').hidden },
-      time: document.getElementById('time-display').textContent }));
-    engine.pause();
+    console.log('SMOKE_INSPECTOR ' + JSON.stringify({ settings: v.settings, nameErr, allMusic: state.videos.map((x) => x.settings.musicId === m.id),
+      block: { hidden: blk.hidden, left: blk.style.left, trimmed: !document.getElementById('trimmed-badge').hidden },
+      info: document.getElementById('in-info').textContent.slice(0, 160) }));
   }
   console.log('SMOKE ' + JSON.stringify({
     videos: state.videos.map((x) => ({ n: x.name, d: x.probe?.duration, thumb: !!x.thumb, err: x.error })),
     music: state.music.map((x) => ({ n: x.name, d: x.duration, err: x.error })),
-    selected: state.selectedVideoId,
+    selected: state.selectedVideoId, outputDir: state.outputDir,
   }));
 }
 console.log('BOOT_OK');

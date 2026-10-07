@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs/promises');
 const { resolveBinaries } = require('./paths');
 const ff = require('./ffmpeg');
+const prefs = require('./prefs');
 
 const isDev = !app.isPackaged;
 
@@ -29,6 +30,9 @@ function registerIpc() {
       packaged: app.isPackaged,
     };
   });
+
+  ipcMain.handle('prefs:get', () => prefs.load());
+  ipcMain.handle('prefs:set', (e, patch) => prefs.save(patch));
 
   ipcMain.handle('dialog:openFiles', async (e, kind) => {
     const win = BrowserWindow.fromWebContents(e.sender);

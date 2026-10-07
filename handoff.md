@@ -1,5 +1,5 @@
 # Handoff: Bulk Video Audio Processor
-Last updated: 2026-10-07 | Last commit: feat(task-3): audio engine + timeline
+Last updated: 2026-10-07 | Last commit: feat(task-4): inspector + settings
 
 ## Task status
 | Task | Name | Status (PENDING / IN PROGRESS / DONE) |
@@ -8,18 +8,17 @@ Last updated: 2026-10-07 | Last commit: feat(task-3): audio engine + timeline
 | 1 | Core services | DONE |
 | 2 | UI shell + media pool | DONE |
 | 3 | Audio engine + timeline | DONE |
-| 4 | Inspector + settings | PENDING |
+| 4 | Inspector + settings | DONE |
 | 5 | Export engine | PENDING |
 | 6 | Metadata + edge cases | PENDING |
 | 7 | Polish + release | PENDING |
 
 ## Next steps (exact, for the very next chat)
-- TASK 4: create `src/renderer/ui/inspector.js`: bind `#inspector-form` fields to selected video settings (`#in-output-name` + `#in-output-ext`, `#in-music` select populated from state.music with "(none)", `#in-orig-vol`/`#in-music-vol` ranges -> origVol/musicVol = value/100 and `#out-*` outputs, `#in-offset` seconds -> offsetMs clamped with `clampStart`), `.apply-all[data-apply]` buttons -> `applyToAll(id, [key])`, `#in-info` shows probe facts (duration, codec, audio sr/ch, container warning).
-- Filename validation: create `src/shared/filename.js` (CommonJS, used by main exporter AND renderer... NOTE renderer is ESM + sandbox, cannot require. Solution: write `src/shared/filename.js` as ESM with `export`, and in main load it via `await import(pathToFileURL(...))` or duplicate minimal logic. Decision: write it ESM; main uses dynamic import once at startup (Node 20 supports). Test with `test/filename.test.mjs`.
-- sanitizeName(name): remove `<>:"/\|?*` and control chars, trim trailing dots/spaces, reserved names (CON, PRN, AUX, NUL, COM1-9, LPT1-9) -> prefix `_`, max 200 chars, empty -> "output".
-- Output folder: `#btn-output-dir` -> `openFolder()` -> `setOutputDir`; persist via new IPC `prefs:get`/`prefs:set` (JSON at `app.getPath('userData')/prefs.json`), load at startup.
-- `#btn-export` enabled when outputDir set and >=1 probed video (actual export is Task 5).
-- Call `initInspector()` from app.js. Remove the Task-3 smoke block in app.js that forces settings if it gets in the way (keep import+report).
+- TASK 5: create `src/main/exporter.js` (CommonJS): `buildFilter({hasAudio, origVol, musicVol, offsetMs, duration})`, `buildArgs({video, music|null, out, ...})` exactly per spec (args ARRAY; no-audio video -> extra input `-f lavfi -i anullsrc=r=48000:cl=stereo` with `atrim=0:D`; no music -> only original branch, still apad+volume); `parseProgress(chunk)` -> out_time_ms; `runExport(job, onProgress)` spawns ffmpeg with `-progress pipe:1`, kills on cancel (`child.kill()` then unlink partial output), resolves {ok, stderrTail}.
+- Queue in main: IPC `export:start` (payload: {outputDir, items:[{id, video, music, hasAudio, duration, origVol, musicVol, offsetMs, outputName, ext}]}) processes ONE at a time; sends `export:progress` ({id, progress}), `export:item` ({id, status, error, outputPath}), `export:done` ({ok, failed, cancelled}) via `webContents.send`; `export:cancel`; `shell:openPath(dir)`. Preload: `startExport`, `cancelExport`, `onExportEvent(cb)`, `openFolder(dir)` -> `shell.openPath`.
+- Collisions: in main, use `src/shared/filename.js` via `await import(pathToFileURL(path))` (ESM) -> `uniqueName(base, ext, fs.existsSync in outputDir, batchSet)`; never equal to source path (if same -> add suffix).
+- Renderer `src/renderer/ui/exportPanel.js`: `#btn-export` builds payload from state (skip videos without probe; use `outputExt`), sets `state.exporting`, updates settings.status/progress per event, overall bar `#overall-progress`, `#btn-cancel`, `#btn-open-folder`, summary toast.
+- Tests `test/exporter.test.js`: exact args + filter string for (a) audio+music (b) no-audio+music (c) audio no music; parseProgress.
 
 ## Decisions made (do not revisit)
 - Electron 33.x, electron-builder 25.x. `npm test` = `node --test` (auto-discovers `test/*.test.js`, works on Node 20 and 22).
@@ -29,6 +28,7 @@ Last updated: 2026-10-07 | Last commit: feat(task-3): audio engine + timeline
 - Window: `autoHideMenuBar`, devTools only when `!app.isPackaged`, sandbox + contextIsolation on.
 - Renderer API exposed as `window.bvape`. Temp dir name: `bvape`. Temp file names = sha1(path).slice(0,16) + ext.
 - MP4-compatible video codecs: h264, hevc, mpeg4, av1, vp9, mjpeg (others keep source container).
+- Inline rename: invalid names show an error while typing (setting not updated); on blur/Enter the name is auto-sanitized. Output ext = .mp4, or source ext when codec not MP4-compatible.
 - Engine: changing offset/volume while playing reschedules sources seamlessly (setTargetAtTime for gain). Timeline x-axis = video duration; music block width = visible (trimmed) duration.
 - Smoke-tested locally with ffmpeg-static linux binaries + lavfi media (probe, thumb, proxy, errors) - works.
 
@@ -46,6 +46,9 @@ Last updated: 2026-10-07 | Last commit: feat(task-3): audio engine + timeline
   - `src/renderer/audio/clamp.js` -> pure: clampStart, musicBlock({start,visibleDur,trimmed,endsAt}), pxToSec/secToPx, toMs
   - `src/renderer/audio/engine.js` -> AudioContext(48k), decodeFile/decodeVideoAudio (cached by path), 2 BufferSources -> 2 GainNodes, `engine` {play,pause,toggle,stop,seek,load,setVolumes,setOffset,position,onChange}, peaks()
   - `src/renderer/audio/timeline.js` -> waveform canvas, ruler, playhead (rAF), draggable music block (pointer capture), trimmed badge, click-to-seek, Space toggles play
+  - `src/shared/filename.js` (ESM) -> sanitizeName, validateName, uniqueName(base, ext, exists, avoidSet), MAX_NAME=200
+  - `src/main/prefs.js` -> JSON prefs in userData/prefs.json ({outputDir})
+  - `src/renderer/ui/inspector.js` -> settings form bindings, outputExt(v), apply-all (music/offset re-clamped per video), output folder picker (persisted)
   - `src/renderer/ui/mediaPool.js` -> importPaths (filters by ext, probes 3 at a time), drag-drop (pathForFile), video/music lists, music preview `<audio>` via blob URL
   - `test/*.test.js` -> node:test unit tests
   - `.github/workflows/build.yml` -> win portable build, artifact, release on tags
@@ -57,6 +60,7 @@ Last updated: 2026-10-07 | Last commit: feat(task-3): audio engine + timeline
   - `media:thumbnail` -> (path, duration) -> jpg path in temp
   - `media:proxy` -> (path) -> m4a path in temp (fails on no-audio video: caller must check hasAudio first)
   - `media:readFile` -> (path) -> ArrayBuffer
+  - `prefs:get` -> () -> {outputDir?}; `prefs:set` -> (patch) -> merged prefs
   - preload also exposes `pathForFile(File)` (webUtils.getPathForFile)
 - State shape: `state = { videos:[{id,path,name,probe,thumb(blob url),error,settings}], music:[{id,path,name,probe,duration,error}], selectedVideoId, outputDir, exporting }`; `settings = { musicId, origVol(0..2), musicVol(0..2), offsetMs, outputName(no ext), status(queued|processing|done|failed), progress, error, outputPath }`.
 - Headless smoke test (works in sandbox with xvfb): `BVAPE_SMOKE=1 BVAPE_SMOKE_MS=6000 BVAPE_SMOKE_FILES="/tmp/media/a.mp4;/tmp/media/song.mp3" xvfb-run -a npx electron --no-sandbox --disable-gpu .` -> prints `[renderer:*]` console lines incl. `SMOKE {...}` and `BOOT_OK`. Generate media with lavfi (`testsrc`, `sine`). Install xvfb with `sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1`.

@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('bvape', {
   /** File.path is gone in modern Electron; resolve dropped files here. */
   pathForFile: (file) => webUtils.getPathForFile(file),
 
+  getPrefs: () => ipcRenderer.invoke('prefs:get'),
+  setPrefs: (patch) => ipcRenderer.invoke('prefs:set', patch),
+
   openFiles: (kind) => ipcRenderer.invoke('dialog:openFiles', kind),
   openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
 
