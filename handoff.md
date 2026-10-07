@@ -1,5 +1,5 @@
 # Handoff: Bulk Video Audio Processor
-Last updated: 2026-10-07 | Last commit: fix(task-2): negative offset in Web Audio preview + ffmpeg atrim filter
+Last updated: 2026-10-07 | Last commit: fix(task-3): README offset guide, CI sync, handoff
 
 Bugfix round 2 (negative music offsets + folder picker). Round 1 (tasks 0-7, initial build) is DONE and described under "Decisions made"/"Architecture notes".
 
@@ -9,10 +9,12 @@ Bugfix round 2 (negative music offsets + folder picker). Round 1 (tasks 0-7, ini
 | 0 | Folder Picker & Export Path Fix | DONE |
 | 1 | Timeline Dragging & Negative Offsets | DONE |
 | 2 | Preview & FFmpeg Filter Updates | DONE |
-| 3 | Verification & CI Sync | PENDING |
+| 3 | Verification & CI Sync | DONE |
 
 ## Next steps (exact, for the very next chat)
-- TASK 3: run `npm test`, keep `ci/build.yml` == `.github/workflows/build.yml`, README offset section, handoff.
+- All 4 bugfix-round-2 tasks are DONE. `npm test` 38/38 green. `ci/build.yml` == `.github/workflows/build.yml` (unchanged this round; workflow runs tests + electron-builder on windows-latest).
+- Remaining (user-driven): check the Actions run for commit `fix(task-3)` is green, download the portable exe artifact, and run the round-2 manual checks below. File any findings under "Known issues" as new tasks.
+- Round-2 manual checks (Windows): (a) Output folder picker shows the real path (not `[object Object]`), export writes into it, *Open folder* opens that folder. (b) Drag the music block left past 0 -> block pins to the left with a hatched strip + `◀ skips` badge; *Music start* shows a negative value; typing `-10.5` works; preview from 0:00 plays the song from 10.5 s in; exported file matches the preview.
 
 ## Decisions made (do not revisit)
 - Electron 33.x, electron-builder 25.x. `npm test` = `node --test` (auto-discovers `test/*.test.js`, works on Node 20 and 22).

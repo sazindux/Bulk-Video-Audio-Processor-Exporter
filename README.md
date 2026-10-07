@@ -14,6 +14,8 @@ The app is portable: no installer, no registry entries, no network access. Prefe
 1. **Import** videos (`.mp4 .mov .mkv`) and music (`.mp3 .wav .m4a`) by dragging them into the left column or with the **+ Add** buttons.
 2. **Select a video** in the list. The centre column shows an audio-only timeline: the waveform of the original audio, and the assigned music as a draggable block.
 3. **Assign music** in the inspector (right column), then drag the music block (or type a start offset) to position it. If the music is longer than the remaining video it is trimmed at the video end (a *trimmed* badge appears).
+   - **Positive start** (e.g. `3.0`): the music begins 3 s after the video starts (silence before it).
+   - **Negative start** (e.g. `-10.5`): the first 10.5 s of the track are skipped so that the part of the song 10.5 s in lines up with the very start of the video. Drag the block **left past 0** or type a negative number in *Music start*. The block stays pinned to the left edge with a hatched strip and a `◀ skips 0:10` badge; the inspector shows how much is skipped. The range is `-musicDuration .. videoDuration`.
 4. **Balance levels** with the two sliders (0-200 %). Press **Play / Space** to hear the mix live.
 5. **Rename** the output in the *Output name* field. Illegal Windows characters are rejected, reserved names are prefixed, and collisions get ` (1)`, ` (2)`...
 6. Use the **All** buttons to apply the current music track, volumes or offset to every video.
@@ -23,7 +25,7 @@ The app is portable: no installer, no registry entries, no network access. Prefe
 
 ```
 [original] aresample=48000, stereo, pad to video length, volume=V
-[music]    aresample=48000, stereo, adelay=offset, volume=M, pad
+[music]    (start < 0: atrim=start=|offset|, asetpts=PTS-STARTPTS) aresample=48000, stereo, (start >= 0: adelay=offset) volume=M, pad
 amix(duration=first) -> volume=2 -> alimiter(0.97) -> AAC 192 kbit/s
 ```
 
