@@ -16,6 +16,7 @@ export function defaultSettings(filePath) {
     progress: 0,         // 0..1 during export
     error: null,         // message when failed
     outputPath: null,    // final path when done
+    verification: null,  // { clean, issues[] } from the post-export ffprobe check
   };
 }
 

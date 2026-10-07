@@ -59,7 +59,7 @@ async function startExport() {
   if (!payload.outputDir) return toast('Choose an output folder first', 'warn');
   if (!payload.items.length) return toast('No exportable videos', 'warn');
   engine.pause();
-  for (const v of state.videos) Object.assign(v.settings, { status: 'queued', progress: 0, error: null, outputPath: null });
+  for (const v of state.videos) Object.assign(v.settings, { status: 'queued', progress: 0, error: null, outputPath: null, verification: null });
   total = payload.items.length;
   state.exporting = true;
   notify('export');

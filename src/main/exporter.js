@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { resolveBinaries } = require('./paths');
+const ff = require('./ffmpeg');
 
 const SAMPLE_RATE = 48000;
 const NULL_SRC = `anullsrc=r=${SAMPLE_RATE}:cl=stereo`;
@@ -50,12 +51,62 @@ function buildArgs(job) {
     '-map', '0:v:0', '-map', '[aout]',
     '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
     '-map_metadata', '-1', '-map_metadata:s:v', '-1', '-map_metadata:s:a', '-1', '-map_chapters', '-1',
-    '-metadata:s:v', 'handler_name=', '-metadata:s:a', 'handler_name=',
     '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact',
   );
-  if (path.extname(job.out).toLowerCase() === '.mp4' || path.extname(job.out).toLowerCase() === '.mov') args.push('-movflags', '+faststart');
+  // mov/mp4 muxer: faststart for streaming; empty_hdlr_name drops the default "VideoHandler"/"SoundHandler" strings
+  // (the only way to remove handler_name - `-metadata:s handler_name=` is ignored by the muxer).
+  if (isMovFamily(job.out)) args.push('-movflags', '+faststart', '-empty_hdlr_name', '1');
   args.push(job.out);
   return args;
+}
+
+function isMovFamily(file) {
+  const ext = path.extname(file).toLowerCase();
+  return ext === '.mp4' || ext === '.mov' || ext === '.m4v';
+}
+
+// Tags that are structural / required by the container and therefore acceptable in a "clean" output.
+const ALLOWED_GLOBAL = new Set(['major_brand', 'minor_version', 'compatible_brands']);
+const ALLOWED_STREAM = new Set(['language']);
+// Matroska requires MuxingApp/WritingApp (ffprobe shows them as `encoder`; bitexact reduces the value to
+// "Lavf" with no version), writes per-stream DURATION tags and an ENCODER tag ("Lavc aac") on the
+// re-encoded audio stream that cannot be suppressed. None of these carry personal information.
+const ALLOWED_GLOBAL_MKV = new Set(['encoder']);
+const ALLOWED_STREAM_MKV = new Set(['duration', 'encoder']);
+/** Bitexact library tags contain no version digits ("Lavf", "Lavc aac"); anything else is leaked info. */
+const isBitexactLib = (v) => /^Lav[cf]\b[^0-9]*$/.test(String(v).trim());
+
+/**
+ * Pure check of a probe result: returns { clean, issues[] } listing leftover tags / chapters.
+ * `probe` is the shape produced by ffmpeg.parseProbe.
+ */
+function checkMetadata(probe, outFile) {
+  const mkv = path.extname(outFile).toLowerCase() === '.mkv';
+  const issues = [];
+  for (const [k, v] of Object.entries(probe.tags || {})) {
+    const key = k.toLowerCase();
+    if (ALLOWED_GLOBAL.has(key)) continue;
+    if (mkv && ALLOWED_GLOBAL_MKV.has(key) && isBitexactLib(v)) continue;
+    issues.push(`global tag ${k}=${v}`);
+  }
+  (probe.streamTags || []).forEach((tags, i) => {
+    for (const [k, v] of Object.entries(tags || {})) {
+      const key = k.toLowerCase();
+      if (ALLOWED_STREAM.has(key)) continue;
+      if (mkv && ALLOWED_STREAM_MKV.has(key) && (key === 'duration' || isBitexactLib(v))) continue;
+      issues.push(`stream ${i} tag ${k}=${v}`);
+    }
+  });
+  if (probe.chapters) issues.push(`${probe.chapters} chapter(s) left`);
+  if (!probe.hasVideo) issues.push('no video stream in output');
+  if (!probe.hasAudio) issues.push('no audio stream in output');
+  return { clean: issues.length === 0, issues };
+}
+
+/** Probe the exported file and verify that metadata was stripped. */
+async function verifyOutput(outFile) {
+  const probe = await ff.probe(outFile);
+  return { ...checkMetadata(probe, outFile), duration: probe.duration, vcodec: probe.vcodec, acodec: probe.acodec };
 }
 
 /** Parse `-progress pipe:1` text; returns seconds of output written, or null if absent. */
@@ -139,7 +190,7 @@ function startQueue({ outputDir, items }, send, verify) {
       current = null;
       if (r.ok) {
         let verification = null;
-        if (verify) { try { verification = await verify(out); } catch (e) { verification = { ok: false, issues: [e.message] }; } }
+        if (verify) { try { verification = await verify(out); } catch (e) { verification = { clean: false, issues: ['verification failed: ' + e.message] }; } }
         ok++;
         send('export:item', { id: it.id, status: 'done', outputPath: out, verification });
       } else if (r.cancelled) {
@@ -156,4 +207,4 @@ function startQueue({ outputDir, items }, send, verify) {
   return { promise, cancel() { cancelled = true; if (current) current.cancel(); } };
 }
 
-module.exports = { buildFilter, buildArgs, parseProgress, runExport, resolveOutputPath, startQueue, NULL_SRC };
+module.exports = { buildFilter, buildArgs, parseProgress, runExport, resolveOutputPath, startQueue, checkMetadata, verifyOutput, NULL_SRC };

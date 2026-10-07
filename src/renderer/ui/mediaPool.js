@@ -105,6 +105,7 @@ function renderVideos() {
     const badges = [];
     if (v.probe && !v.probe.mp4Compatible) badges.push(el('span', { class: 'badge warn', text: extOf(v.path), title: 'Codec not MP4-compatible: source container is kept' }));
     if (s.status !== 'queued') badges.push(el('span', { class: `badge ${STATUS_BADGE[s.status] || ''}`, text: s.status, title: s.error || s.outputPath || '' }));
+    if (s.status === 'done' && s.verification && !s.verification.clean) badges.push(el('span', { class: 'badge warn', text: 'tags', title: 'Metadata left in output: ' + s.verification.issues.join('; ') }));
     const meta = el('div', { class: 'meta' },
       el('span', { class: 'name ellipsis', text: v.name, title: v.path }),
       el('span', { class: 'sub ellipsis', text: sub, title: sub }),

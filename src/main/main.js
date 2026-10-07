@@ -72,7 +72,7 @@ function registerIpc() {
     if (!payload || !payload.outputDir || !Array.isArray(payload.items) || !payload.items.length) return { ok: false, error: 'Nothing to export' };
     const wc = e.sender;
     const send = (ch, data) => { if (!wc.isDestroyed()) wc.send(ch, data); };
-    activeExport = exporter.startQueue(payload, send);
+    activeExport = exporter.startQueue(payload, send, exporter.verifyOutput);
     activeExport.promise.catch((err) => send('export:done', { ok: 0, failed: payload.items.length, cancelled: false, total: payload.items.length, error: err.message }))
       .finally(() => { activeExport = null; });
     return { ok: true };

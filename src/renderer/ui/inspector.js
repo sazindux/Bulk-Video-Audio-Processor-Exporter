@@ -49,6 +49,9 @@ function render() {
     ];
     if (!p.mp4Compatible) rows.push(['Warning', `Codec ${p.vcodec} is not MP4-compatible; keeping ${outputExt(v)} container`]);
     if (m && v.probe && m.duration > v.probe.duration - s.offsetMs / 1000) rows.push(['Note', 'Music is trimmed at the video end']);
+    if (s.status === 'done' && s.outputPath) rows.push(['Exported', s.outputPath]);
+    if (s.status === 'done' && s.verification) rows.push(['Metadata', s.verification.clean ? 'verified clean' : `leftover: ${s.verification.issues.join('; ')}`]);
+    if (s.status === 'failed' && s.error) rows.push(['Error', s.error]);
     for (const [k, val] of rows) { const d = document.createElement('div'); d.append(Object.assign(document.createElement('b'), { textContent: k + ': ' }), val); f.info.append(d); }
   } else f.info.textContent = v.error || 'probing…';
 }

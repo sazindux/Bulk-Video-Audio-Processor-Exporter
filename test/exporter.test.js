@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildFilter, buildArgs, parseProgress, NULL_SRC } = require('../src/main/exporter');
+const { buildFilter, buildArgs, parseProgress, checkMetadata, NULL_SRC } = require('../src/main/exporter');
 
 const base = { video: 'C:\\in\\my video.mp4', music: 'D:\\mu sic\\track.mp3', out: 'E:\\out\\my video.mp4', hasAudio: true, duration: 12.5, origVol: 1, musicVol: 0.5, offsetMs: 1500 };
 
@@ -40,9 +40,8 @@ test('args: exact array for audio + music', () => {
     '-map', '0:v:0', '-map', '[aout]',
     '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
     '-map_metadata', '-1', '-map_metadata:s:v', '-1', '-map_metadata:s:a', '-1', '-map_chapters', '-1',
-    '-metadata:s:v', 'handler_name=', '-metadata:s:a', 'handler_name=',
     '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact',
-    '-movflags', '+faststart',
+    '-movflags', '+faststart', '-empty_hdlr_name', '1',
     base.out,
   ]);
   // Paths with spaces are passed as single array entries (never a shell string).
@@ -56,11 +55,32 @@ test('args: no-audio video inserts lavfi anullsrc before the music input', () =>
   assert.equal(NULL_SRC, 'anullsrc=r=48000:cl=stereo');
 });
 
-test('args: no music -> only one -i; mkv output has no faststart', () => {
+test('args: no music -> only one -i; mkv output has no mov muxer options', () => {
   const a = buildArgs({ ...base, music: null, out: 'E:\\out\\x.mkv' });
   assert.equal(a.filter((x) => x === '-i').length, 1);
   assert.equal(a.includes('-movflags'), false);
+  assert.equal(a.includes('-empty_hdlr_name'), false);
   assert.equal(a[a.length - 1], 'E:\\out\\x.mkv');
+});
+
+const probeBase = { hasVideo: true, hasAudio: true, chapters: 0, tags: {}, streamTags: [{}, {}] };
+
+test('checkMetadata: clean mp4 with only brand tags and language', () => {
+  const r = checkMetadata({ ...probeBase, tags: { major_brand: 'isom', minor_version: '512', compatible_brands: 'isomiso2avc1mp41' }, streamTags: [{ language: 'und' }, { language: 'und' }] }, 'o.mp4');
+  assert.deepEqual(r, { clean: true, issues: [] });
+});
+
+test('checkMetadata: flags encoder, handler_name, creation_time, chapters, missing audio', () => {
+  const r = checkMetadata({ ...probeBase, hasAudio: false, chapters: 2, tags: { encoder: 'Lavf61', creation_time: '2024' }, streamTags: [{ handler_name: 'VideoHandler' }] }, 'o.mp4');
+  assert.equal(r.clean, false);
+  assert.deepEqual(r.issues, ['global tag encoder=Lavf61', 'global tag creation_time=2024', 'stream 0 tag handler_name=VideoHandler', '2 chapter(s) left', 'no audio stream in output']);
+});
+
+test('checkMetadata: mkv tolerates bitexact encoder=Lavf and DURATION, nothing else', () => {
+  const ok = checkMetadata({ ...probeBase, tags: { encoder: 'Lavf' }, streamTags: [{ DURATION: '00:00:06' }, { ENCODER: 'Lavc aac', DURATION: '00:00:06' }] }, 'o.mkv');
+  assert.equal(ok.clean, true);
+  const bad = checkMetadata({ ...probeBase, tags: { encoder: 'Lavf61.1.100' }, streamTags: [{ title: 'x' }, {}] }, 'o.mkv');
+  assert.deepEqual(bad.issues, ['global tag encoder=Lavf61.1.100', 'stream 0 tag title=x']);
 });
 
 test('parseProgress reads the last out_time_ms / out_time_us', () => {

@@ -92,7 +92,7 @@ input.invalid { border-color: var(--danger); }
 input[type=range] { flex: 1; accent-color: var(--accent); }
 .ext { color: var(--muted); }
 .error { color: var(--danger); font-size: 11px; }
-.info { color: var(--muted); font-size: 11px; line-height: 1.6; border-top: 1px solid var(--border); padding-top: 8px; }
+.info { color: var(--muted); font-size: 11px; line-height: 1.6; border-top: 1px solid var(--border); padding-top: 8px; overflow-wrap: anywhere; user-select: text; }
 .info b { color: var(--text); font-weight: 500; }
 .export-bar { border-top: 1px solid var(--border); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .progress { position: relative; height: 18px; background: var(--bg); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }

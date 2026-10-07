@@ -1,5 +1,5 @@
 # Handoff: Bulk Video Audio Processor
-Last updated: 2026-10-07 | Last commit: feat(task-5): export engine
+Last updated: 2026-10-07 | Last commit: feat(task-6): metadata verification + edge cases
 
 ## Task status
 | Task | Name | Status (PENDING / IN PROGRESS / DONE) |
@@ -10,14 +10,11 @@ Last updated: 2026-10-07 | Last commit: feat(task-5): export engine
 | 3 | Audio engine + timeline | DONE |
 | 4 | Inspector + settings | DONE |
 | 5 | Export engine | DONE |
-| 6 | Metadata + edge cases | PENDING |
+| 6 | Metadata + edge cases | DONE |
 | 7 | Polish + release | PENDING |
 
 ## Next steps (exact, for the very next chat)
-- TASK 6: add `verifyOutput(outPath)` in `src/main/exporter.js` (or ffmpeg.js): run ffprobe (`ff.probe`), collect `tags` + `streamTags`; allowed keys = major_brand, minor_version, compatible_brands, language; anything else (esp. `encoder`, `handler_name`, `creation_time`, `location`) -> issue. Pass it as the 3rd arg `verify` to `exporter.startQueue` in main.js (`export:item` done event already carries `verification`). Show a small "verified"/"tags left: ..." badge/tooltip in `mediaPool.js` (settings.verification is stored by exportPanel).
-- Smoke run showed `handler_name=VideoHandler/SoundHandler` still present in mp4 output despite `-metadata:s:v handler_name=`; the mp4 muxer writes a default handler. Try `-metadata:s:v:0 handler_name=` + `-metadata:s:a:0 handler_name=` or accept handler_name (technically required by mov muxer) in the allowed list and document it. Decide and record.
-- Edge cases: corrupted input (ffprobe failure already shows error in pool; make sure export skips `v.error` - done in exportableVideos); long paths on Windows (`\\?\` prefix not needed for spawn args; verify); mismatched sample rates handled by aresample; mkv/mov container warnings exist.
-- Then TASK 7 (icon in `build/icon.ico`, README, release workflow is already in ci/build.yml, manual checklist).
+- TASK 7: (1) app icon: generate `build/icon.ico` (256px multi-size; electron-builder picks `build/icon.ico` automatically; `signAndEditExecutable: false` must become true or the icon will NOT be embedded in the exe -> set it to true and keep `CSC_IDENTITY_AUTO_DISCOVERY=false`; rcedit works on windows-latest without signing). Also set `win.icon` + BrowserWindow `icon` for the taskbar. (2) Remove the env/version panel from the main UI or move it to a small "About" footer/tooltip. (3) README: usage, how audio mixing works (volume semantics), build locally, troubleshooting (SmartScreen warning for unsigned portable exe, antivirus, long paths). (4) Size review: check `dist/` size in CI log; `files` whitelist already excludes tests. (5) Confirm `ci/build.yml` release step (softprops/action-gh-release@v2, permissions contents: write) and bump version to 1.0.0; the user must copy ci/build.yml to .github/workflows/ (see Known issues). (6) Final manual test checklist in handoff.md.
 
 ## Decisions made (do not revisit)
 - Electron 33.x, electron-builder 25.x. `npm test` = `node --test` (auto-discovers `test/*.test.js`, works on Node 20 and 22).
@@ -31,6 +28,9 @@ Last updated: 2026-10-07 | Last commit: feat(task-5): export engine
 - Engine: changing offset/volume while playing reschedules sources seamlessly (setTargetAtTime for gain). Timeline x-axis = video duration; music block width = visible (trimmed) duration.
 - Export: args array per spec + `-loglevel error` (stderr tail = real errors only) + `-metadata:s:v/a handler_name=`; `-movflags +faststart` only for .mp4/.mov outputs. No-audio video -> `-f lavfi -i anullsrc=r=48000:cl=stereo` as input 1 with `atrim=0:D`; music becomes input 2. No music -> single padded branch + limiter.
 - Cancel: `child.kill()` then unlink partial output; current item and remaining items go back to `queued`. Queue never overwrites the source (resolveOutputPath treats the source path as taken).
+- Metadata: `-empty_hdlr_name 1` (mp4/mov muxer option) removes handler_name; `-metadata:s handler_name=` is ignored by the muxer. Accepted leftover tags (structural, no personal data): mp4 global major_brand/minor_version/compatible_brands, stream `language`; mkv global `encoder=Lavf` (bitexact, no version), stream `DURATION`, audio stream `ENCODER=Lavc aac` (cannot be suppressed). `checkMetadata` flags everything else incl. any value with version digits.
+- Verification runs ffprobe on every finished output (`exporter.verifyOutput`); result stored in `settings.verification`, shown as `tags` warn badge in the pool + 'Metadata' row in the inspector info.
+- Corrupted/garbage inputs: ffprobe fails at import (item shows error, excluded from export by `exportableVideos`); if ffmpeg fails anyway the stderr tail (last 6 lines) is the item error. Long unicode paths/names: verified OK on Linux (200-char sanitized names + 250-char dirs); Windows MAX_PATH relies on Win10 long-path support/Electron - keep MAX_NAME=200.
 - `src/shared/package.json` = `{"type":"module"}` so main can `import()` filename.js without warnings.
 - Smoke-tested locally with ffmpeg-static linux binaries + lavfi media (probe, thumb, proxy, errors) - works.
 
@@ -73,7 +73,6 @@ Last updated: 2026-10-07 | Last commit: feat(task-5): export engine
 - Headless smoke test (works in sandbox with xvfb): `BVAPE_SMOKE=1 BVAPE_SMOKE_MS=6000 BVAPE_SMOKE_FILES="/tmp/media/a.mp4;/tmp/media/song.mp3" xvfb-run -a npx electron --no-sandbox --disable-gpu .` -> prints `[renderer:*]` console lines incl. `SMOKE {...}` and `BOOT_OK`. Generate media with lavfi (`testsrc`, `sine`). Install xvfb with `sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1`.
 
 ## Known issues / bugs
-- Output mp4 still carries stream tags `handler_name` (VideoHandler/SoundHandler) + `language=und` written by the mov muxer; global tags only brand info. Address/document in Task 6 verification.
 - **ACTION REQUIRED (user, one time):** the GitHub integration token has no `workflows` permission, so `.github/workflows/build.yml` cannot be pushed from the sandbox. The workflow is committed at `ci/build.yml`. Copy it to `.github/workflows/build.yml` in the GitHub web UI (Add file -> Create new file, paste content) or run locally: `mkdir -p .github/workflows && cp ci/build.yml .github/workflows/build.yml && git add . && git commit -m "ci: add workflow" && git push`. Future CI edits by the AI will land in `ci/build.yml` and must be copied the same way.
 
 ## CI status
@@ -81,4 +80,5 @@ Last updated: 2026-10-07 | Last commit: feat(task-5): export engine
 
 ## Manual tests for the user (Windows)
 - [ ] Download artifact from Actions, run the portable exe, confirm window shows ffmpeg/ffprobe paths ending in `app.asar.unpacked\...` and version strings (not "error").
+- [ ] After export, inspector shows `Metadata: verified clean` for mp4 outputs; right-click output in Explorer -> Properties -> Details shows no title/author/date/GPS; MediaInfo shows no encoder/handler strings.
 - [ ] Import 2+ videos and a music track, assign music, set offset/volumes, pick an output folder, Export all: per-item badges go processing -> done, overall bar fills, Cancel mid-way stops ffmpeg and deletes the partial file, Open folder opens Explorer.
