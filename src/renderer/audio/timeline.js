@@ -60,18 +60,26 @@ function layoutMusicBlock() {
   const lane = ui.lane.clientWidth, vd = v.probe.duration;
   const blk = musicBlock(v.settings.offsetMs / 1000, m.duration, vd);
   ui.block.hidden = false;
-  ui.block.style.left = `${secToPx(blk.start, lane, vd)}px`;
+  // Negative start: the audible slice begins at x=0 and the skipped part is "off-screen" to the left.
+  ui.block.style.left = `${secToPx(blk.visibleStart, lane, vd)}px`;
   ui.block.style.width = `${Math.max(4, secToPx(blk.visibleDur, lane, vd))}px`;
-  ui.trimmed.hidden = !blk.trimmed;
+  ui.block.classList.toggle('trimmed-start', blk.trimmedStart);
+  ui.block.classList.toggle('trimmed-end', blk.trimmedEnd);
+  ui.block.classList.toggle('silent', blk.visibleDur <= 1e-6);
+  ui.trimmed.hidden = !blk.trimmedEnd;
+  ui.trimmedStart.hidden = !blk.trimmedStart;
+  if (blk.trimmedStart) ui.trimmedStart.textContent = `◀ skips ${fmtTime(blk.skip)}`;
   ui.musicLabel.textContent = m.name;
-  // Music waveform: draw the visible portion (0..visibleDur of the track) stretched to the block width.
+  ui.block.title = blk.trimmedStart
+    ? `${m.name}\nStarts ${fmtTime(blk.skip)} into the track (music start ${blk.start.toFixed(1)} s). Drag right to hear the beginning.`
+    : `${m.name}\nMusic start ${blk.start.toFixed(1)} s. Drag left past 0 to skip the beginning of the track.`;
+  // Music waveform: draw the audible slice [skip, skip+visibleDur] of the track stretched to the block width.
   if (cur.musicBuf) {
     const { w } = fitCanvas(ui.musicCanvas);
-    const frac = Math.min(1, blk.visibleDur / m.duration);
     const cols = Math.max(1, Math.round(w));
-    if (!cur.musicPeaks || cur.musicPeaks.cols !== cols || cur.musicPeaks.frac !== frac) {
-      const full = peaks(cur.musicBuf, Math.round(cols / Math.max(frac, 1e-6)));
-      cur.musicPeaks = { cols, frac, data: full ? full.subarray(0, cols * 2) : null };
+    const fromFrac = Math.min(1, blk.skip / m.duration), toFrac = Math.min(1, (blk.skip + blk.visibleDur) / m.duration);
+    if (!cur.musicPeaks || cur.musicPeaks.cols !== cols || cur.musicPeaks.fromFrac !== fromFrac || cur.musicPeaks.toFrac !== toFrac) {
+      cur.musicPeaks = { cols, fromFrac, toFrac, data: peaks(cur.musicBuf, cols, fromFrac, toFrac) };
     }
     drawWave(ui.musicCanvas, cur.musicPeaks.data, 'rgba(245,165,36,.75)');
   } else drawWave(ui.musicCanvas, null, '', '');
@@ -146,6 +154,7 @@ function setupDrag() {
     if (!drag) return;
     const vd = drag.v.probe.duration;
     const dx = pxToSec(e.clientX - drag.x0, ui.lane.clientWidth, vd);
+    // Range is [-musicDur, maxStart]: dragging left past 0 skips the beginning of the track.
     const start = clampStart(drag.start0 + dx, drag.m.duration, vd);
     updateSettings(drag.v.id, { offsetMs: toMs(start) });
     engine.setOffset(start);
@@ -166,7 +175,7 @@ export function initTimeline() {
   Object.assign(ui, {
     title: $('timeline-title'), play: $('btn-play'), stop: $('btn-stop'), time: $('time-display'),
     body: $('timeline-body'), waveCanvas: $('wave-canvas'), lane: $('music-lane'), block: $('music-block'),
-    musicCanvas: $('music-canvas'), musicLabel: $('music-label'), trimmed: $('trimmed-badge'),
+    musicCanvas: $('music-canvas'), musicLabel: $('music-label'), trimmed: $('trimmed-badge'), trimmedStart: $('trimmed-start-badge'),
     ruler: $('ruler'), playhead: $('playhead'), empty: $('timeline-empty'),
   });
   ui.play.addEventListener('click', () => engine.toggle());

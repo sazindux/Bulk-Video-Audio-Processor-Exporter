@@ -149,14 +149,17 @@ function tick() {
 }
 
 /** Compute min/max peaks per column for waveform drawing. */
-export function peaks(buffer, columns) {
+export function peaks(buffer, columns, fromFrac = 0, toFrac = 1) {
   if (!buffer || columns <= 0) return null;
   const chs = [];
   for (let c = 0; c < buffer.numberOfChannels; c++) chs.push(buffer.getChannelData(c));
-  const step = buffer.length / columns;
+  // Optional sub-range of the buffer (used to draw only the audible slice of a trimmed track).
+  const s0 = Math.max(0, Math.min(buffer.length, Math.floor(fromFrac * buffer.length)));
+  const s1 = Math.max(s0, Math.min(buffer.length, Math.floor(toFrac * buffer.length)));
+  const step = (s1 - s0) / columns;
   const out = new Float32Array(columns * 2);
   for (let i = 0; i < columns; i++) {
-    const a = Math.floor(i * step), b = Math.min(buffer.length, Math.floor((i + 1) * step) || a + 1);
+    const a = s0 + Math.floor(i * step), b = Math.min(s1, s0 + Math.floor((i + 1) * step) || a + 1);
     let min = 1, max = -1;
     for (const d of chs) for (let j = a; j < b; j += 1) { const v = d[j]; if (v < min) min = v; if (v > max) max = v; }
     out[i * 2] = min; out[i * 2 + 1] = max;

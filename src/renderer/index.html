@@ -57,6 +57,7 @@
               <canvas id="music-canvas" class="wave wave-music"></canvas>
               <span class="music-label ellipsis" id="music-label"></span>
               <span class="trimmed-badge" id="trimmed-badge" hidden>trimmed</span>
+              <span class="trimmed-badge trimmed-start-badge" id="trimmed-start-badge" hidden>&#9664; skips</span>
             </div>
           </div>
         </div>
@@ -104,7 +105,7 @@
           <fieldset>
             <label for="in-offset">Music start (seconds)</label>
             <div class="row">
-              <input id="in-offset" type="number" min="0" step="0.1" value="0" />
+              <input id="in-offset" type="number" step="0.1" value="0" title="Seconds. Negative = skip the beginning of the track (e.g. -10.5 starts the music 10.5 s in)." />
               <button type="button" class="btn btn-sm btn-ghost apply-all" data-apply="offsetMs" title="Apply to all">All</button>
             </div>
           </fieldset>

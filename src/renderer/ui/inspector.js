@@ -1,6 +1,6 @@
 // Inspector: per-video settings bound to the selected video, "Apply to all", output folder.
 import { state, subscribe, selectedVideo, getMusic, updateSettings, applyToAll, setOutputDir } from '../state.js';
-import { clampStart, toMs } from '../audio/clamp.js';
+import { clampStart, minStart, maxStart, toMs } from '../audio/clamp.js';
 import { validateName, sanitizeName } from '../../shared/filename.js';
 import { asPathString } from '../../shared/outputPath.js';
 import { fmtTime, extOf, toast } from '../util.js';
@@ -37,7 +37,8 @@ function render() {
   if (document.activeElement !== f.offset) f.offset.value = (s.offsetMs / 1000).toFixed(1);
   const m = getMusic(s.musicId);
   f.offset.disabled = !m;
-  f.offset.max = v.probe ? (m && m.duration <= v.probe.duration ? v.probe.duration - m.duration : v.probe.duration).toFixed(1) : 0;
+  f.offset.max = v.probe && m ? maxStart(m.duration, v.probe.duration).toFixed(1) : '0';
+  f.offset.min = m ? minStart(m.duration).toFixed(1) : '0';
 
   const p = v.probe;
   f.info.replaceChildren();
@@ -50,6 +51,7 @@ function render() {
     ];
     if (!p.mp4Compatible) rows.push(['Warning', `Codec ${p.vcodec} is not MP4-compatible; keeping ${outputExt(v)} container`]);
     if (m && v.probe && m.duration > v.probe.duration - s.offsetMs / 1000) rows.push(['Note', 'Music is trimmed at the video end']);
+    if (m && s.offsetMs < 0) rows.push(['Note', `Music starts ${fmtTime(-s.offsetMs / 1000)} into the track (first ${(-s.offsetMs / 1000).toFixed(1)} s skipped)`]);
     if (s.status === 'done' && s.outputPath) rows.push(['Exported', s.outputPath]);
     if (s.status === 'done' && s.verification) rows.push(['Metadata', s.verification.clean ? 'verified clean' : `leftover: ${s.verification.issues.join('; ')}`]);
     if (s.status === 'failed' && s.error) rows.push(['Error', s.error]);
@@ -103,7 +105,8 @@ export function initInspector() {
   const commitOffset = () => {
     const v = selectedVideo(); const m = v && getMusic(v.settings.musicId);
     if (!v || !v.probe || !m) return;
-    const sec = clampStart(parseFloat(f.offset.value), m.duration, v.probe.duration);
+    // Accept negative floats (e.g. -10.5 = start the track 10.5 s in); clampStart bounds to [-musicDur, maxStart].
+    const sec = clampStart(parseFloat(String(f.offset.value).replace(',', '.')), m.duration, v.probe.duration);
     f.offset.value = sec.toFixed(1);
     updateSettings(v.id, { offsetMs: toMs(sec) });
   };
