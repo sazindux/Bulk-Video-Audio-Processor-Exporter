@@ -1,12 +1,14 @@
 // Renderer bootstrap: wire UI modules to the store.
 import { initMediaPool, importPaths } from './ui/mediaPool.js';
 import { initInspector } from './ui/inspector.js';
+import { initExportPanel } from './ui/exportPanel.js';
 import { initTimeline } from './audio/timeline.js';
-import { state, updateSettings } from './state.js';
+import { state, setOutputDir } from './state.js';
 
 initMediaPool();
 initTimeline();
 initInspector();
+initExportPanel();
 
 // Headless smoke test support (BVAPE_SMOKE=1 in main): auto-import files and report state.
 const smoke = await window.bvape.smokeFiles();
@@ -27,6 +29,15 @@ if (smoke.length) {
     console.log('SMOKE_INSPECTOR ' + JSON.stringify({ settings: v.settings, nameErr, allMusic: state.videos.map((x) => x.settings.musicId === m.id),
       block: { hidden: blk.hidden, left: blk.style.left, trimmed: !document.getElementById('trimmed-badge').hidden },
       info: document.getElementById('in-info').textContent.slice(0, 160) }));
+    // Smoke export: BVAPE_SMOKE_OUT=<dir> runs the real queue and logs EXPORT_DONE from exportPanel.
+    const smokeOut = new URLSearchParams(location.search).get('out');
+    if (smokeOut) {
+      setOutputDir(smokeOut);
+      await new Promise((r) => setTimeout(r, 50));
+      document.getElementById('btn-export').click();
+      await new Promise((r) => { const t = setInterval(() => { if (!state.exporting) { clearInterval(t); r(); } }, 200); });
+      console.log('SMOKE_EXPORT ' + JSON.stringify(state.videos.map((x) => ({ n: x.name, s: x.settings.status, p: x.settings.progress, out: x.settings.outputPath, err: x.settings.error }))));
+    }
   }
   console.log('SMOKE ' + JSON.stringify({
     videos: state.videos.map((x) => ({ n: x.name, d: x.probe?.duration, thumb: !!x.thumb, err: x.error })),

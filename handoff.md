@@ -1,5 +1,5 @@
 # Handoff: Bulk Video Audio Processor
-Last updated: 2026-10-07 | Last commit: feat(task-4): inspector + settings
+Last updated: 2026-10-07 | Last commit: feat(task-5): export engine
 
 ## Task status
 | Task | Name | Status (PENDING / IN PROGRESS / DONE) |
@@ -9,16 +9,15 @@ Last updated: 2026-10-07 | Last commit: feat(task-4): inspector + settings
 | 2 | UI shell + media pool | DONE |
 | 3 | Audio engine + timeline | DONE |
 | 4 | Inspector + settings | DONE |
-| 5 | Export engine | PENDING |
+| 5 | Export engine | DONE |
 | 6 | Metadata + edge cases | PENDING |
 | 7 | Polish + release | PENDING |
 
 ## Next steps (exact, for the very next chat)
-- TASK 5: create `src/main/exporter.js` (CommonJS): `buildFilter({hasAudio, origVol, musicVol, offsetMs, duration})`, `buildArgs({video, music|null, out, ...})` exactly per spec (args ARRAY; no-audio video -> extra input `-f lavfi -i anullsrc=r=48000:cl=stereo` with `atrim=0:D`; no music -> only original branch, still apad+volume); `parseProgress(chunk)` -> out_time_ms; `runExport(job, onProgress)` spawns ffmpeg with `-progress pipe:1`, kills on cancel (`child.kill()` then unlink partial output), resolves {ok, stderrTail}.
-- Queue in main: IPC `export:start` (payload: {outputDir, items:[{id, video, music, hasAudio, duration, origVol, musicVol, offsetMs, outputName, ext}]}) processes ONE at a time; sends `export:progress` ({id, progress}), `export:item` ({id, status, error, outputPath}), `export:done` ({ok, failed, cancelled}) via `webContents.send`; `export:cancel`; `shell:openPath(dir)`. Preload: `startExport`, `cancelExport`, `onExportEvent(cb)`, `openFolder(dir)` -> `shell.openPath`.
-- Collisions: in main, use `src/shared/filename.js` via `await import(pathToFileURL(path))` (ESM) -> `uniqueName(base, ext, fs.existsSync in outputDir, batchSet)`; never equal to source path (if same -> add suffix).
-- Renderer `src/renderer/ui/exportPanel.js`: `#btn-export` builds payload from state (skip videos without probe; use `outputExt`), sets `state.exporting`, updates settings.status/progress per event, overall bar `#overall-progress`, `#btn-cancel`, `#btn-open-folder`, summary toast.
-- Tests `test/exporter.test.js`: exact args + filter string for (a) audio+music (b) no-audio+music (c) audio no music; parseProgress.
+- TASK 6: add `verifyOutput(outPath)` in `src/main/exporter.js` (or ffmpeg.js): run ffprobe (`ff.probe`), collect `tags` + `streamTags`; allowed keys = major_brand, minor_version, compatible_brands, language; anything else (esp. `encoder`, `handler_name`, `creation_time`, `location`) -> issue. Pass it as the 3rd arg `verify` to `exporter.startQueue` in main.js (`export:item` done event already carries `verification`). Show a small "verified"/"tags left: ..." badge/tooltip in `mediaPool.js` (settings.verification is stored by exportPanel).
+- Smoke run showed `handler_name=VideoHandler/SoundHandler` still present in mp4 output despite `-metadata:s:v handler_name=`; the mp4 muxer writes a default handler. Try `-metadata:s:v:0 handler_name=` + `-metadata:s:a:0 handler_name=` or accept handler_name (technically required by mov muxer) in the allowed list and document it. Decide and record.
+- Edge cases: corrupted input (ffprobe failure already shows error in pool; make sure export skips `v.error` - done in exportableVideos); long paths on Windows (`\\?\` prefix not needed for spawn args; verify); mismatched sample rates handled by aresample; mkv/mov container warnings exist.
+- Then TASK 7 (icon in `build/icon.ico`, README, release workflow is already in ci/build.yml, manual checklist).
 
 ## Decisions made (do not revisit)
 - Electron 33.x, electron-builder 25.x. `npm test` = `node --test` (auto-discovers `test/*.test.js`, works on Node 20 and 22).
@@ -30,6 +29,9 @@ Last updated: 2026-10-07 | Last commit: feat(task-4): inspector + settings
 - MP4-compatible video codecs: h264, hevc, mpeg4, av1, vp9, mjpeg (others keep source container).
 - Inline rename: invalid names show an error while typing (setting not updated); on blur/Enter the name is auto-sanitized. Output ext = .mp4, or source ext when codec not MP4-compatible.
 - Engine: changing offset/volume while playing reschedules sources seamlessly (setTargetAtTime for gain). Timeline x-axis = video duration; music block width = visible (trimmed) duration.
+- Export: args array per spec + `-loglevel error` (stderr tail = real errors only) + `-metadata:s:v/a handler_name=`; `-movflags +faststart` only for .mp4/.mov outputs. No-audio video -> `-f lavfi -i anullsrc=r=48000:cl=stereo` as input 1 with `atrim=0:D`; music becomes input 2. No music -> single padded branch + limiter.
+- Cancel: `child.kill()` then unlink partial output; current item and remaining items go back to `queued`. Queue never overwrites the source (resolveOutputPath treats the source path as taken).
+- `src/shared/package.json` = `{"type":"module"}` so main can `import()` filename.js without warnings.
 - Smoke-tested locally with ffmpeg-static linux binaries + lavfi media (probe, thumb, proxy, errors) - works.
 
 ## Architecture notes
@@ -48,6 +50,8 @@ Last updated: 2026-10-07 | Last commit: feat(task-4): inspector + settings
   - `src/renderer/audio/timeline.js` -> waveform canvas, ruler, playhead (rAF), draggable music block (pointer capture), trimmed badge, click-to-seek, Space toggles play
   - `src/shared/filename.js` (ESM) -> sanitizeName, validateName, uniqueName(base, ext, exists, avoidSet), MAX_NAME=200
   - `src/main/prefs.js` -> JSON prefs in userData/prefs.json ({outputDir})
+  - `src/main/exporter.js` -> buildFilter, buildArgs (args array), parseProgress, runExport (spawn, progress, cancel), resolveOutputPath (sanitize + unique + never source), startQueue (sequential, sends export:* events, optional verify hook)
+  - `src/renderer/ui/exportPanel.js` -> buildPayload from state, start/cancel/open folder, mirrors events into settings.status/progress/outputPath/verification, overall bar
   - `src/renderer/ui/inspector.js` -> settings form bindings, outputExt(v), apply-all (music/offset re-clamped per video), output folder picker (persisted)
   - `src/renderer/ui/mediaPool.js` -> importPaths (filters by ext, probes 3 at a time), drag-drop (pathForFile), video/music lists, music preview `<audio>` via blob URL
   - `test/*.test.js` -> node:test unit tests
@@ -61,11 +65,15 @@ Last updated: 2026-10-07 | Last commit: feat(task-4): inspector + settings
   - `media:proxy` -> (path) -> m4a path in temp (fails on no-audio video: caller must check hasAudio first)
   - `media:readFile` -> (path) -> ArrayBuffer
   - `prefs:get` -> () -> {outputDir?}; `prefs:set` -> (patch) -> merged prefs
-  - preload also exposes `pathForFile(File)` (webUtils.getPathForFile)
+  - `export:start` -> ({outputDir, items:[{id, video, music|null, hasAudio, duration, origVol, musicVol, offsetMs, outputName, ext}]}) -> {ok}|{ok:false,error}; `export:cancel` -> {ok}; `shell:openPath` -> (dir) -> {ok}|{ok:false,error}
+  - main -> renderer pushes: `export:progress` {id, progress 0..1}; `export:item` {id, status, error?, outputPath?, verification?}; `export:done` {ok, failed, cancelled, total, error?}
+  - preload also exposes `pathForFile(File)` (webUtils.getPathForFile), `startExport`, `cancelExport`, `onExportEvent(cb(channel,data))`, `openFolder(dir)`
 - State shape: `state = { videos:[{id,path,name,probe,thumb(blob url),error,settings}], music:[{id,path,name,probe,duration,error}], selectedVideoId, outputDir, exporting }`; `settings = { musicId, origVol(0..2), musicVol(0..2), offsetMs, outputName(no ext), status(queued|processing|done|failed), progress, error, outputPath }`.
+- Headless smoke export: add `BVAPE_SMOKE_OUT=/tmp/out2` to the smoke command -> renderer clicks Export and prints `SMOKE_EXPORT [...]` + `EXPORT_DONE {...}`.
 - Headless smoke test (works in sandbox with xvfb): `BVAPE_SMOKE=1 BVAPE_SMOKE_MS=6000 BVAPE_SMOKE_FILES="/tmp/media/a.mp4;/tmp/media/song.mp3" xvfb-run -a npx electron --no-sandbox --disable-gpu .` -> prints `[renderer:*]` console lines incl. `SMOKE {...}` and `BOOT_OK`. Generate media with lavfi (`testsrc`, `sine`). Install xvfb with `sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1`.
 
 ## Known issues / bugs
+- Output mp4 still carries stream tags `handler_name` (VideoHandler/SoundHandler) + `language=und` written by the mov muxer; global tags only brand info. Address/document in Task 6 verification.
 - **ACTION REQUIRED (user, one time):** the GitHub integration token has no `workflows` permission, so `.github/workflows/build.yml` cannot be pushed from the sandbox. The workflow is committed at `ci/build.yml`. Copy it to `.github/workflows/build.yml` in the GitHub web UI (Add file -> Create new file, paste content) or run locally: `mkdir -p .github/workflows && cp ci/build.yml .github/workflows/build.yml && git add . && git commit -m "ci: add workflow" && git push`. Future CI edits by the AI will land in `ci/build.yml` and must be copied the same way.
 
 ## CI status
@@ -73,3 +81,4 @@ Last updated: 2026-10-07 | Last commit: feat(task-4): inspector + settings
 
 ## Manual tests for the user (Windows)
 - [ ] Download artifact from Actions, run the portable exe, confirm window shows ffmpeg/ffprobe paths ending in `app.asar.unpacked\...` and version strings (not "error").
+- [ ] Import 2+ videos and a music track, assign music, set offset/volumes, pick an output folder, Export all: per-item badges go processing -> done, overall bar fills, Cancel mid-way stops ffmpeg and deletes the partial file, Open folder opens Explorer.

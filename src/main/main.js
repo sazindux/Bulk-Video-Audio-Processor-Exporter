@@ -1,10 +1,13 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const { resolveBinaries } = require('./paths');
 const ff = require('./ffmpeg');
 const prefs = require('./prefs');
+const exporter = require('./exporter');
+
+let activeExport = null; // queue controller while an export runs
 
 const isDev = !app.isPackaged;
 
@@ -62,6 +65,23 @@ function registerIpc() {
     const buf = await fs.readFile(p);
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   }));
+
+  // Export queue: one ffmpeg at a time; events are pushed with webContents.send.
+  ipcMain.handle('export:start', (e, payload) => {
+    if (activeExport) return { ok: false, error: 'An export is already running' };
+    if (!payload || !payload.outputDir || !Array.isArray(payload.items) || !payload.items.length) return { ok: false, error: 'Nothing to export' };
+    const wc = e.sender;
+    const send = (ch, data) => { if (!wc.isDestroyed()) wc.send(ch, data); };
+    activeExport = exporter.startQueue(payload, send);
+    activeExport.promise.catch((err) => send('export:done', { ok: 0, failed: payload.items.length, cancelled: false, total: payload.items.length, error: err.message }))
+      .finally(() => { activeExport = null; });
+    return { ok: true };
+  });
+  ipcMain.handle('export:cancel', () => { if (activeExport) activeExport.cancel(); return { ok: true }; });
+  ipcMain.handle('shell:openPath', async (e, p) => {
+    const err = await shell.openPath(String(p || ''));
+    return err ? { ok: false, error: err } : { ok: true };
+  });
 }
 
 function createWindow() {
@@ -87,7 +107,9 @@ function createWindow() {
     win.webContents.on('console-message', (e, level, msg, line, src) => console.log(`[renderer:${level}] ${msg} (${path.basename(src)}:${line})`));
     win.webContents.on('did-finish-load', () => setTimeout(() => app.quit(), Number(process.env.BVAPE_SMOKE_MS) || 4000));
   }
-  win.loadFile(path.join(__dirname, '../renderer/index.html'));
+  // BVAPE_SMOKE_OUT=<dir> makes the smoke run perform a real export into that folder.
+  const query = process.env.BVAPE_SMOKE && process.env.BVAPE_SMOKE_OUT ? { out: process.env.BVAPE_SMOKE_OUT } : undefined;
+  win.loadFile(path.join(__dirname, '../renderer/index.html'), query ? { query } : undefined);
 }
 
 app.whenReady().then(() => {
@@ -98,4 +120,4 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => { app.quit(); });
-app.on('will-quit', () => { ff.cleanTempDir(); });
+app.on('will-quit', () => { if (activeExport) activeExport.cancel(); ff.cleanTempDir(); });
