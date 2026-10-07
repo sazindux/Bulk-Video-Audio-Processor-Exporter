@@ -1,24 +1,21 @@
 # Handoff: Bulk Video Audio Processor
-Last updated: 2026-10-07 | Last commit: feat(task-7): polish + release
+Last updated: 2026-10-07 | Last commit: fix(task-0): folder picker IPC returns string, output path sanitized
+
+Bugfix round 2 (negative music offsets + folder picker). Round 1 (tasks 0-7, initial build) is DONE and described under "Decisions made"/"Architecture notes".
 
 ## Task status
 | Task | Name | Status (PENDING / IN PROGRESS / DONE) |
 |---|---|---|
-| 0 | Scaffold + CI | DONE |
-| 1 | Core services | DONE |
-| 2 | UI shell + media pool | DONE |
-| 3 | Audio engine + timeline | DONE |
-| 4 | Inspector + settings | DONE |
-| 5 | Export engine | DONE |
-| 6 | Metadata + edge cases | DONE |
-| 7 | Polish + release | DONE |
+| 0 | Folder Picker & Export Path Fix | DONE |
+| 1 | Timeline Dragging & Negative Offsets | PENDING |
+| 2 | Preview & FFmpeg Filter Updates | PENDING |
+| 3 | Verification & CI Sync | PENDING |
 
 ## Next steps (exact, for the very next chat)
-- All 8 tasks are DONE. Remaining work is user-driven:
-  1. User copies `ci/build.yml` to `.github/workflows/build.yml` (see Known issues) and checks the Actions run is green.
-  2. If CI fails: most likely spots are `signAndEditExecutable: true` (rcedit icon embedding; fall back to `false` if winCodeSign download fails on the runner) or the `files` exclusion globs in `electron-builder.yml`.
-  3. Release: `git tag v1.0.0 && git push origin v1.0.0` -> workflow attaches the exe to a GitHub Release.
-  4. Run the manual checklist below on Windows and file bugs in "Known issues"; fix bugs as `fix(task-N)` commits.
+- TASK 1: `src/renderer/audio/clamp.js` -> `clampStart` range becomes `[-musicDur, maxRight]` (maxRight unchanged: videoDur-musicDur if music fits, else videoDur). `musicBlock` must return `{start, visibleDur, trimmed, trimmedStart, visibleStart(=max(0,start)), endsAt}`; visibleDur = min(start+musicDur, videoDur) - max(0,start). Update `test/clamp.test.mjs` (existing tests assert negative -> 0; change them).
+- TASK 1: `src/renderer/audio/timeline.js` -> drag uses the new clamp; when start<0 render the block from x=0 with a "trimmed start" badge/hatched left edge (block left = secToPx(max(0,start))). Inspector offset `<input type=number>` -> set `min="-<musicDur>"` (or remove min) and allow negative floats; `toMs` keeps sign.
+- TASK 2: `engine.js` -> music source `start(when, offset)` with offset = -musicStart when musicStart<0; and when seeking to position p: musicOffset = p - musicStart (already generic if the code uses p - start; verify). `exporter.js buildFilter` -> `offsetMs<0` => `atrim=start=ABS_SEC,asetpts=PTS-STARTPTS` before aresample (no adelay). Update `test/exporter.test.js` ("never negative" test must change) + add negative case.
+- TASK 3: run `npm test`, keep `ci/build.yml` == `.github/workflows/build.yml`, README offset section, handoff.
 
 ## Decisions made (do not revisit)
 - Electron 33.x, electron-builder 25.x. `npm test` = `node --test` (auto-discovers `test/*.test.js`, works on Node 20 and 22).
@@ -26,7 +23,7 @@ Last updated: 2026-10-07 | Last commit: feat(task-7): polish + release
 - asarUnpack: `node_modules/ffmpeg-static/**` and `node_modules/ffprobe-static/bin/win32/x64/**` only (other platforms' ffprobe binaries stay in asar; electron-builder prunes nothing else).
 - `signAndEditExecutable: false` to avoid signing/rcedit issues on CI; `CSC_IDENTITY_AUTO_DISCOVERY=false`.
 - Window: `autoHideMenuBar`, devTools only when `!app.isPackaged`, sandbox + contextIsolation on.
-- Renderer API exposed as `window.bvape`. Temp dir name: `bvape`. Temp file names = sha1(path).slice(0,16) + ext.
+- Renderer API exposed as `window.bvape` (`pickFolder()` = picker -> string|null, `openPath(dir)` = Explorer). Temp dir name: `bvape`. Temp file names = sha1(path).slice(0,16) + ext.
 - MP4-compatible video codecs: h264, hevc, mpeg4, av1, vp9, mjpeg (others keep source container).
 - Inline rename: invalid names show an error while typing (setting not updated); on blur/Enter the name is auto-sanitized. Output ext = .mp4, or source ext when codec not MP4-compatible.
 - Engine: changing offset/volume while playing reschedules sources seamlessly (setTargetAtTime for gain). Timeline x-axis = video duration; music block width = visible (trimmed) duration.
@@ -55,6 +52,7 @@ Last updated: 2026-10-07 | Last commit: feat(task-7): polish + release
   - `src/renderer/audio/clamp.js` -> pure: clampStart, musicBlock({start,visibleDur,trimmed,endsAt}), pxToSec/secToPx, toMs
   - `src/renderer/audio/engine.js` -> AudioContext(48k), decodeFile/decodeVideoAudio (cached by path), 2 BufferSources -> 2 GainNodes, `engine` {play,pause,toggle,stop,seek,load,setVolumes,setOffset,position,onChange}, peaks()
   - `src/renderer/audio/timeline.js` -> waveform canvas, ruler, playhead (rAF), draggable music block (pointer capture), trimmed badge, click-to-seek, Space toggles play
+  - `src/shared/outputPath.js` (ESM) -> asPathString(any)->string|null, dialogResultToPath(result); used by state.setOutputDir + inspector
   - `src/shared/filename.js` (ESM) -> sanitizeName, validateName, uniqueName(base, ext, exists, avoidSet), MAX_NAME=200
   - `src/main/prefs.js` -> JSON prefs in userData/prefs.json ({outputDir})
   - `src/main/exporter.js` -> buildFilter, buildArgs (args array), parseProgress, runExport (spawn, progress, cancel), resolveOutputPath (sanitize + unique + never source), startQueue (sequential, sends export:* events, optional verify hook)
@@ -66,13 +64,13 @@ Last updated: 2026-10-07 | Last commit: feat(task-7): polish + release
 - IPC channels (invoke; media:* return `{ok:true,value}` or `{ok:false,error}` with ffmpeg stderr tail):
   - `env:info` -> () -> {ffmpegPath, ffprobePath, ffmpegVersion, ffprobeVersion, electron, packaged}
   - `dialog:openFiles` -> ('video'|'music') -> string[] paths
-  - `dialog:openFolder` -> () -> string|null
+  - `dialog:openFolder` -> () -> string|null (preload name: `pickFolder`; main validates typeof string)
   - `media:probe` -> (path) -> {duration, hasVideo, hasAudio, vcodec, mp4Compatible, width, height, sampleRate, channels, acodec, formatName, tags, streamTags[], chapters}
   - `media:thumbnail` -> (path, duration) -> jpg path in temp
   - `media:proxy` -> (path) -> m4a path in temp (fails on no-audio video: caller must check hasAudio first)
   - `media:readFile` -> (path) -> ArrayBuffer
   - `prefs:get` -> () -> {outputDir?}; `prefs:set` -> (patch) -> merged prefs
-  - `export:start` -> ({outputDir, items:[{id, video, music|null, hasAudio, duration, origVol, musicVol, offsetMs, outputName, ext}]}) -> {ok}|{ok:false,error}; `export:cancel` -> {ok}; `shell:openPath` -> (dir) -> {ok}|{ok:false,error}
+  - `export:start` -> ({outputDir, items:[{id, video, music|null, hasAudio, duration, origVol, musicVol, offsetMs, outputName, ext}]}) -> {ok}|{ok:false,error}; `export:cancel` -> {ok}; `shell:openPath` -> (dir:string) -> {ok}|{ok:false,error} (preload name: `openPath`; non-string -> error)
   - main -> renderer pushes: `export:progress` {id, progress 0..1}; `export:item` {id, status, error?, outputPath?, verification?}; `export:done` {ok, failed, cancelled, total, error?}
   - preload also exposes `pathForFile(File)` (webUtils.getPathForFile), `startExport`, `cancelExport`, `onExportEvent(cb(channel,data))`, `openFolder(dir)`
 - State shape: `state = { videos:[{id,path,name,probe,thumb(blob url),error,settings}], music:[{id,path,name,probe,duration,error}], selectedVideoId, outputDir, exporting }`; `settings = { musicId, origVol(0..2), musicVol(0..2), offsetMs, outputName(no ext), status(queued|processing|done|failed), progress, error, outputPath }`.
@@ -80,7 +78,8 @@ Last updated: 2026-10-07 | Last commit: feat(task-7): polish + release
 - Headless smoke test (works in sandbox with xvfb): `BVAPE_SMOKE=1 BVAPE_SMOKE_MS=6000 BVAPE_SMOKE_FILES="/tmp/media/a.mp4;/tmp/media/song.mp3" xvfb-run -a npx electron --no-sandbox --disable-gpu .` -> prints `[renderer:*]` console lines incl. `SMOKE {...}` and `BOOT_OK`. Generate media with lavfi (`testsrc`, `sine`). Install xvfb with `sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1`.
 
 ## Known issues / bugs
-- **ACTION REQUIRED (user, one time):** the GitHub integration token has no `workflows` permission, so `.github/workflows/build.yml` cannot be pushed from the sandbox. The workflow is committed at `ci/build.yml`. Copy it to `.github/workflows/build.yml` in the GitHub web UI (Add file -> Create new file, paste content) or run locally: `mkdir -p .github/workflows && cp ci/build.yml .github/workflows/build.yml && git add . && git commit -m "ci: add workflow" && git push`. Future CI edits by the AI will land in `ci/build.yml` and must be copied the same way.
+- `.github/workflows/build.yml` now exists (user copied it). `ci/build.yml` is kept as the AI-editable mirror; if the token lacks `workflows` permission, edits land in `ci/build.yml` and the user copies them over. Keep both identical.
+- Fixed (task-0, bugfix round 2): folder picker showed `[object Object]` because `preload.js` had two `openFolder` keys - the later `shell:openPath` one shadowed the dialog one, so the picker returned `{ok:true}`. Renamed to `pickFolder`/`openPath`, main returns strictly string|null, `setOutputDir` sanitizes via `asPathString`, corrupt prefs are cleared at startup.
 
 ## CI status
 - CI unverified from the sandbox (workflow file must be copied by the user; see Known issues). Local checks: `npm test` 30/30 green; `electron-builder --dir --linux` packages fine with the current config; headless xvfb smoke (import, inspector, full export + verification) passes.

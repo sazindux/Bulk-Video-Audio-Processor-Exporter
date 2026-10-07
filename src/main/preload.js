@@ -13,7 +13,8 @@ contextBridge.exposeInMainWorld('bvape', {
   setPrefs: (patch) => ipcRenderer.invoke('prefs:set', patch),
 
   openFiles: (kind) => ipcRenderer.invoke('dialog:openFiles', kind),
-  openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
+  /** Folder picker -> string path or null (never the raw dialog result). */
+  pickFolder: () => ipcRenderer.invoke('dialog:openFolder'),
 
   probe: (filePath) => ipcRenderer.invoke('media:probe', filePath),
   thumbnail: (filePath, duration) => ipcRenderer.invoke('media:thumbnail', filePath, duration),
@@ -29,5 +30,6 @@ contextBridge.exposeInMainWorld('bvape', {
     const handlers = chans.map((ch) => { const h = (e, data) => cb(ch, data); ipcRenderer.on(ch, h); return [ch, h]; });
     return () => handlers.forEach(([ch, h]) => ipcRenderer.removeListener(ch, h));
   },
-  openFolder: (dir) => ipcRenderer.invoke('shell:openPath', dir),
+  /** Open a folder in Explorer. Distinct name from pickFolder (a duplicate key used to shadow the picker). */
+  openPath: (dir) => ipcRenderer.invoke('shell:openPath', dir),
 });

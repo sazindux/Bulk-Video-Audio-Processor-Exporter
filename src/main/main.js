@@ -50,7 +50,10 @@ function registerIpc() {
   ipcMain.handle('dialog:openFolder', async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender);
     const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] });
-    return r.canceled ? null : r.filePaths[0];
+    // Always hand the renderer a plain string (or null) - never the { canceled, filePaths } object.
+    if (!r || r.canceled || !Array.isArray(r.filePaths) || !r.filePaths.length) return null;
+    const p = r.filePaths[0];
+    return typeof p === 'string' && p ? p : null;
   });
 
   // Media services return { ok, value } or { ok:false, error } so the renderer can show stderr tails.
@@ -80,7 +83,8 @@ function registerIpc() {
   });
   ipcMain.handle('export:cancel', () => { if (activeExport) activeExport.cancel(); return { ok: true }; });
   ipcMain.handle('shell:openPath', async (e, p) => {
-    const err = await shell.openPath(String(p || ''));
+    if (typeof p !== 'string' || !p) return { ok: false, error: 'No folder selected' };
+    const err = await shell.openPath(p);
     return err ? { ok: false, error: err } : { ok: true };
   });
 }

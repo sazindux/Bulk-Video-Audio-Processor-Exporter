@@ -2,6 +2,7 @@
 import { state, subscribe, selectedVideo, getMusic, updateSettings, applyToAll, setOutputDir } from '../state.js';
 import { clampStart, toMs } from '../audio/clamp.js';
 import { validateName, sanitizeName } from '../../shared/filename.js';
+import { asPathString } from '../../shared/outputPath.js';
 import { fmtTime, extOf, toast } from '../util.js';
 
 const api = window.bvape;
@@ -131,7 +132,7 @@ export function initInspector() {
   }
 
   $('btn-output-dir').addEventListener('click', async () => {
-    const dir = await api.openFolder();
+    const dir = asPathString(await api.pickFolder());
     if (dir) { setOutputDir(dir); api.setPrefs({ outputDir: dir }); }
   });
 
@@ -139,6 +140,10 @@ export function initInspector() {
     if (what !== 'output') render();
     renderOutput();
   });
-  api.getPrefs().then((p) => { if (p && p.outputDir) setOutputDir(p.outputDir); });
+  api.getPrefs().then((p) => {
+    const dir = p ? asPathString(p.outputDir) : null;
+    if (dir) setOutputDir(dir);
+    else if (p && p.outputDir) api.setPrefs({ outputDir: null }); // clear a corrupt stored value
+  });
   render(); renderOutput();
 }

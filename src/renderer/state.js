@@ -1,4 +1,5 @@
 // Central store. Mutate via the exported functions only; UI modules subscribe.
+import { asPathString } from '../shared/outputPath.js';
 import { basename, stripExt, newId } from './util.js';
 
 export const VIDEO_EXT = ['mp4', 'mov', 'mkv'];
@@ -99,4 +100,5 @@ export function applyToAll(fromVideoId, keys) {
   notify('settings');
 }
 
-export function setOutputDir(dir) { state.outputDir = dir; notify('output'); }
+/** Output folder is always a string or null (guards against dialog result objects / stale prefs). */
+export function setOutputDir(dir) { state.outputDir = asPathString(dir); notify('output'); }

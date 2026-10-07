@@ -91,7 +91,7 @@ export function initExportPanel() {
   $('btn-export').addEventListener('click', startExport);
   $('btn-cancel').addEventListener('click', () => { $('btn-cancel').disabled = true; api.cancelExport(); });
   $('btn-open-folder').addEventListener('click', async () => {
-    const r = await api.openFolder(state.outputDir);
+    const r = await api.openPath(state.outputDir);
     if (!r.ok) toast(r.error, 'error');
   });
   api.onExportEvent(onEvent);
