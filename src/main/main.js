@@ -52,6 +52,8 @@ function registerIpc() {
   ipcMain.handle('media:probe', wrap((p) => ff.probe(p)));
   ipcMain.handle('media:thumbnail', wrap((p, d) => ff.thumbnail(p, d)));
   ipcMain.handle('media:proxy', wrap((p) => ff.audioProxy(p)));
+  // Smoke mode only: lets the renderer auto-import files given in BVAPE_SMOKE_FILES (semicolon-separated).
+  ipcMain.handle('env:smokeFiles', () => (process.env.BVAPE_SMOKE ? String(process.env.BVAPE_SMOKE_FILES || '').split(';').filter(Boolean) : []));
   ipcMain.handle('media:readFile', wrap(async (p) => {
     const buf = await fs.readFile(p);
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
@@ -76,6 +78,11 @@ function createWindow() {
     },
   });
   win.setMenuBarVisibility(false);
+  // Dev smoke mode (BVAPE_SMOKE=1): echo renderer console to stdout and quit after 4s (headless CI check).
+  if (process.env.BVAPE_SMOKE) {
+    win.webContents.on('console-message', (e, level, msg, line, src) => console.log(`[renderer:${level}] ${msg} (${path.basename(src)}:${line})`));
+    win.webContents.on('did-finish-load', () => setTimeout(() => app.quit(), Number(process.env.BVAPE_SMOKE_MS) || 4000));
+  }
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
 }
 

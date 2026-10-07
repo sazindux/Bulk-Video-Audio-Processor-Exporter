@@ -5,3 +5,5 @@ dist/
 
 # Workflow lives in ci/build.yml until the user copies it (token lacks workflows permission)
 .github/
+core
+core.*

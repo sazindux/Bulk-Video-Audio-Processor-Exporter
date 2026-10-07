@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 // Minimal, typed-by-convention API. See handoff.md "IPC channels" for payloads.
 contextBridge.exposeInMainWorld('bvape', {
   getEnvInfo: () => ipcRenderer.invoke('env:info'),
+  smokeFiles: () => ipcRenderer.invoke('env:smokeFiles'),
 
   /** File.path is gone in modern Electron; resolve dropped files here. */
   pathForFile: (file) => webUtils.getPathForFile(file),

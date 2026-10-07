@@ -8,11 +8,124 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main class="boot">
-    <h1>Bulk Video Audio Processor</h1>
-    <p class="muted">Scaffold build (Task 0). Environment check:</p>
-    <table id="env"></table>
-  </main>
+  <div id="app" class="layout">
+    <!-- Column 1: media pool -->
+    <aside class="pane pool" id="pool">
+      <section class="pool-section">
+        <header class="pane-header">
+          <h2>Videos <span class="count" id="video-count">0</span></h2>
+          <div class="actions">
+            <button id="btn-add-videos" class="btn btn-sm" title="Add videos (.mp4 .mov .mkv)">+ Add</button>
+            <button id="btn-clear-videos" class="btn btn-sm btn-ghost" title="Remove all videos">Clear</button>
+          </div>
+        </header>
+        <ul class="list" id="video-list"></ul>
+        <div class="dropzone" id="video-drop"><span>Drop videos here</span><small>.mp4 .mov .mkv</small></div>
+      </section>
+      <section class="pool-section">
+        <header class="pane-header">
+          <h2>Music <span class="count" id="music-count">0</span></h2>
+          <div class="actions">
+            <button id="btn-add-music" class="btn btn-sm" title="Add music (.mp3 .wav .m4a)">+ Add</button>
+            <button id="btn-clear-music" class="btn btn-sm btn-ghost" title="Remove all music">Clear</button>
+          </div>
+        </header>
+        <ul class="list" id="music-list"></ul>
+        <div class="dropzone" id="music-drop"><span>Drop music here</span><small>.mp3 .wav .m4a</small></div>
+      </section>
+    </aside>
+
+    <!-- Column 2: audio timeline -->
+    <main class="pane timeline" id="timeline">
+      <header class="pane-header">
+        <h2 id="timeline-title" class="ellipsis">No video selected</h2>
+        <div class="transport">
+          <button id="btn-play" class="btn btn-icon" title="Play / Pause (Space)" disabled>&#9654;</button>
+          <button id="btn-stop" class="btn btn-icon btn-ghost" title="Stop" disabled>&#9632;</button>
+          <span class="time" id="time-display">0:00.0 / 0:00.0</span>
+        </div>
+      </header>
+      <div class="timeline-body" id="timeline-body">
+        <div class="track">
+          <label>Original audio</label>
+          <canvas id="wave-canvas" class="wave"></canvas>
+        </div>
+        <div class="track">
+          <label>Background music</label>
+          <div class="music-lane" id="music-lane">
+            <div class="music-block" id="music-block" hidden>
+              <canvas id="music-canvas" class="wave wave-music"></canvas>
+              <span class="music-label ellipsis" id="music-label"></span>
+              <span class="trimmed-badge" id="trimmed-badge" hidden>trimmed</span>
+            </div>
+          </div>
+        </div>
+        <div class="ruler" id="ruler"></div>
+        <div class="playhead" id="playhead" hidden></div>
+        <div class="timeline-empty" id="timeline-empty">Select a video to see its audio timeline.</div>
+      </div>
+    </main>
+
+    <!-- Column 3: inspector -->
+    <aside class="pane inspector" id="inspector">
+      <header class="pane-header"><h2>Inspector</h2></header>
+      <div class="inspector-body" id="inspector-body">
+        <p class="muted" id="inspector-empty">Select a video to edit its settings.</p>
+        <form id="inspector-form" hidden autocomplete="off">
+          <fieldset>
+            <label for="in-output-name">Output file name</label>
+            <div class="row">
+              <input id="in-output-name" type="text" spellcheck="false" />
+              <span class="ext" id="in-output-ext">.mp4</span>
+            </div>
+            <small class="error" id="in-output-name-error" hidden></small>
+          </fieldset>
+          <fieldset>
+            <label for="in-music">Background music</label>
+            <div class="row">
+              <select id="in-music"></select>
+              <button type="button" class="btn btn-sm btn-ghost apply-all" data-apply="music" title="Apply this track to all videos">All</button>
+            </div>
+          </fieldset>
+          <fieldset>
+            <label for="in-orig-vol">Original volume <output id="out-orig-vol">100%</output></label>
+            <div class="row">
+              <input id="in-orig-vol" type="range" min="0" max="200" step="1" value="100" />
+              <button type="button" class="btn btn-sm btn-ghost apply-all" data-apply="origVol" title="Apply to all">All</button>
+            </div>
+          </fieldset>
+          <fieldset>
+            <label for="in-music-vol">Music volume <output id="out-music-vol">100%</output></label>
+            <div class="row">
+              <input id="in-music-vol" type="range" min="0" max="200" step="1" value="100" />
+              <button type="button" class="btn btn-sm btn-ghost apply-all" data-apply="musicVol" title="Apply to all">All</button>
+            </div>
+          </fieldset>
+          <fieldset>
+            <label for="in-offset">Music start (seconds)</label>
+            <div class="row">
+              <input id="in-offset" type="number" min="0" step="0.1" value="0" />
+              <button type="button" class="btn btn-sm btn-ghost apply-all" data-apply="offsetMs" title="Apply to all">All</button>
+            </div>
+          </fieldset>
+          <fieldset class="info" id="in-info"></fieldset>
+        </form>
+      </div>
+      <footer class="export-bar" id="export-bar">
+        <div class="row">
+          <button id="btn-output-dir" class="btn btn-sm">Output folder…</button>
+          <span class="ellipsis muted" id="output-dir-label" title="">not set</span>
+        </div>
+        <div class="row">
+          <button id="btn-export" class="btn btn-primary" disabled>Export all</button>
+          <button id="btn-cancel" class="btn btn-danger" hidden>Cancel</button>
+          <button id="btn-open-folder" class="btn btn-ghost" hidden>Open folder</button>
+        </div>
+        <div class="progress" id="overall-progress" hidden><div class="bar" id="overall-bar"></div><span id="overall-label"></span></div>
+      </footer>
+    </aside>
+  </div>
+  <div id="toasts" class="toasts"></div>
   <script type="module" src="app.js"></script>
 </body>
 </html>
