@@ -1,0 +1,24 @@
+appId: com.sazindux.bvape
+productName: Bulk Video Audio Processor
+artifactName: BulkVideoAudioProcessor-${version}-portable.exe
+directories:
+  output: dist
+  buildResources: build
+files:
+  - package.json
+  - src/**/*
+  - "!src/**/*.md"
+asarUnpack:
+  - node_modules/ffmpeg-static/**
+  - node_modules/ffprobe-static/bin/win32/x64/**
+electronLanguages:
+  - en-US
+compression: maximum
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+  signAndEditExecutable: false
+portable:
+  requestExecutionLevel: user
