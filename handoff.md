@@ -1,5 +1,5 @@
 # Handoff: Bulk Video Audio Processor
-Last updated: 2026-10-07 | Last commit: feat(task-6): metadata verification + edge cases
+Last updated: 2026-10-07 | Last commit: feat(task-7): polish + release
 
 ## Task status
 | Task | Name | Status (PENDING / IN PROGRESS / DONE) |
@@ -11,10 +11,14 @@ Last updated: 2026-10-07 | Last commit: feat(task-6): metadata verification + ed
 | 4 | Inspector + settings | DONE |
 | 5 | Export engine | DONE |
 | 6 | Metadata + edge cases | DONE |
-| 7 | Polish + release | PENDING |
+| 7 | Polish + release | DONE |
 
 ## Next steps (exact, for the very next chat)
-- TASK 7: (1) app icon: generate `build/icon.ico` (256px multi-size; electron-builder picks `build/icon.ico` automatically; `signAndEditExecutable: false` must become true or the icon will NOT be embedded in the exe -> set it to true and keep `CSC_IDENTITY_AUTO_DISCOVERY=false`; rcedit works on windows-latest without signing). Also set `win.icon` + BrowserWindow `icon` for the taskbar. (2) Remove the env/version panel from the main UI or move it to a small "About" footer/tooltip. (3) README: usage, how audio mixing works (volume semantics), build locally, troubleshooting (SmartScreen warning for unsigned portable exe, antivirus, long paths). (4) Size review: check `dist/` size in CI log; `files` whitelist already excludes tests. (5) Confirm `ci/build.yml` release step (softprops/action-gh-release@v2, permissions contents: write) and bump version to 1.0.0; the user must copy ci/build.yml to .github/workflows/ (see Known issues). (6) Final manual test checklist in handoff.md.
+- All 8 tasks are DONE. Remaining work is user-driven:
+  1. User copies `ci/build.yml` to `.github/workflows/build.yml` (see Known issues) and checks the Actions run is green.
+  2. If CI fails: most likely spots are `signAndEditExecutable: true` (rcedit icon embedding; fall back to `false` if winCodeSign download fails on the runner) or the `files` exclusion globs in `electron-builder.yml`.
+  3. Release: `git tag v1.0.0 && git push origin v1.0.0` -> workflow attaches the exe to a GitHub Release.
+  4. Run the manual checklist below on Windows and file bugs in "Known issues"; fix bugs as `fix(task-N)` commits.
 
 ## Decisions made (do not revisit)
 - Electron 33.x, electron-builder 25.x. `npm test` = `node --test` (auto-discovers `test/*.test.js`, works on Node 20 and 22).
@@ -31,6 +35,9 @@ Last updated: 2026-10-07 | Last commit: feat(task-6): metadata verification + ed
 - Metadata: `-empty_hdlr_name 1` (mp4/mov muxer option) removes handler_name; `-metadata:s handler_name=` is ignored by the muxer. Accepted leftover tags (structural, no personal data): mp4 global major_brand/minor_version/compatible_brands, stream `language`; mkv global `encoder=Lavf` (bitexact, no version), stream `DURATION`, audio stream `ENCODER=Lavc aac` (cannot be suppressed). `checkMetadata` flags everything else incl. any value with version digits.
 - Verification runs ffprobe on every finished output (`exporter.verifyOutput`); result stored in `settings.verification`, shown as `tags` warn badge in the pool + 'Metadata' row in the inspector info.
 - Corrupted/garbage inputs: ffprobe fails at import (item shows error, excluded from export by `exportableVideos`); if ffmpeg fails anyway the stderr tail (last 6 lines) is the item error. Long unicode paths/names: verified OK on Linux (200-char sanitized names + 250-char dirs); Windows MAX_PATH relies on Win10 long-path support/Electron - keep MAX_NAME=200.
+- Icon: `build/icon.ico` (16-256, BMP entries) + `build/icon.png` (window/taskbar icon in dev and packaged; whitelisted in `files`). `signAndEditExecutable: true` so rcedit embeds the icon (no signing: `CSC_IDENTITY_AUTO_DISCOVERY=false`).
+- Application menu removed (`Menu.setApplicationMenu(null)`); F12 toggles devtools in dev only. `about` span in the export bar shows `v<version>` with ffmpeg/ffprobe/Electron info in the tooltip (`env:info` now includes `version`).
+- Size: `files` excludes `ffprobe-static/bin/{darwin,linux}` (~230 MB that would otherwise be packed into the asar) and ffmpeg-static install scripts. Local `--linux --dir` check: app.asar 384 KB + unpacked ffmpeg only.
 - `src/shared/package.json` = `{"type":"module"}` so main can `import()` filename.js without warnings.
 - Smoke-tested locally with ffmpeg-static linux binaries + lavfi media (probe, thumb, proxy, errors) - works.
 
@@ -76,9 +83,17 @@ Last updated: 2026-10-07 | Last commit: feat(task-6): metadata verification + ed
 - **ACTION REQUIRED (user, one time):** the GitHub integration token has no `workflows` permission, so `.github/workflows/build.yml` cannot be pushed from the sandbox. The workflow is committed at `ci/build.yml`. Copy it to `.github/workflows/build.yml` in the GitHub web UI (Add file -> Create new file, paste content) or run locally: `mkdir -p .github/workflows && cp ci/build.yml .github/workflows/build.yml && git add . && git commit -m "ci: add workflow" && git push`. Future CI edits by the AI will land in `ci/build.yml` and must be copied the same way.
 
 ## CI status
-- CI unverified: workflow file not yet in `.github/workflows/` (see Known issues). Check https://github.com/sazindux/Bulk-Video-Audio-Processor-Exporter/actions
+- CI unverified from the sandbox (workflow file must be copied by the user; see Known issues). Local checks: `npm test` 30/30 green; `electron-builder --dir --linux` packages fine with the current config; headless xvfb smoke (import, inspector, full export + verification) passes.
+- Check: https://github.com/sazindux/Bulk-Video-Audio-Processor-Exporter/actions
 
 ## Manual tests for the user (Windows)
-- [ ] Download artifact from Actions, run the portable exe, confirm window shows ffmpeg/ffprobe paths ending in `app.asar.unpacked\...` and version strings (not "error").
-- [ ] After export, inspector shows `Metadata: verified clean` for mp4 outputs; right-click output in Explorer -> Properties -> Details shows no title/author/date/GPS; MediaInfo shows no encoder/handler strings.
-- [ ] Import 2+ videos and a music track, assign music, set offset/volumes, pick an output folder, Export all: per-item badges go processing -> done, overall bar fills, Cancel mid-way stops ffmpeg and deletes the partial file, Open folder opens Explorer.
+- [ ] Portable exe starts (SmartScreen: More info -> Run anyway); window has the app icon in title bar/taskbar; no menu bar; hover the `v1.0.0` label bottom-right -> tooltip shows ffmpeg/ffprobe paths ending in `app.asar.unpacked\...` and version strings.
+- [ ] Drag-and-drop 3 videos (one `.mov`, one without audio if possible) and 2 music files; thumbnails and durations appear; unsupported/corrupt files show an error item.
+- [ ] Select a video: waveform renders, Play/Space plays original audio; assign music, drag the block (cannot go < 0 or past the video end; long music shows *trimmed*); offset field stays in sync; both volume sliders change loudness live.
+- [ ] Inline rename: `a:b` shows an error, `CON` becomes `_CON` on blur; `All` buttons copy music/volumes/offset to every video.
+- [ ] Output folder is remembered after restart.
+- [ ] Export all: badges go processing -> done, mini and overall progress bars move, toast summary; Cancel mid-way stops within ~1 s and leaves no partial file; Open folder opens Explorer.
+- [ ] Output plays in Windows Media Player/VLC with video identical to source (same resolution/bitrate in MediaInfo) and mixed audio; `.mov`/`.mkv` with non-MP4 codec keeps its container with a warn badge.
+- [ ] Inspector shows `Metadata: verified clean`; Explorer Properties -> Details has no title/author/date/GPS; MediaInfo shows no `Writing application`/`Encoded date`/handler strings.
+- [ ] Exporting twice to the same folder creates ` (1)` copies; exporting into the source folder never overwrites the source.
+- [ ] Paths with spaces/unicode (e.g. `C:\Vidéos test\日本.mp4`) import and export correctly.

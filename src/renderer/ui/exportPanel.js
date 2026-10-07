@@ -95,6 +95,11 @@ export function initExportPanel() {
     if (!r.ok) toast(r.error, 'error');
   });
   api.onExportEvent(onEvent);
+  // About: version + bundled ffmpeg info on hover (replaces the Task 0 env panel).
+  api.getEnvInfo().then((i) => {
+    $('about').textContent = `v${i.version}`;
+    $('about').title = `Bulk Video Audio Processor ${i.version}\nElectron ${i.electron}\n${i.ffmpegVersion}\n${i.ffprobeVersion}\n${i.ffmpegPath}`;
+  }).catch(() => {});
   subscribe(() => { $('btn-cancel').disabled = false; renderOverall(); });
   renderOverall();
 }

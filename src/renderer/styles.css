@@ -105,3 +105,5 @@ input[type=range] { flex: 1; accent-color: var(--accent); }
 .toast.error { border-left-color: var(--danger); }
 .toast.warn { border-left-color: var(--warn); }
 .toast.ok { border-left-color: var(--ok); }
+
+.about { margin-left: auto; font-size: 10px; cursor: help; white-space: nowrap; }

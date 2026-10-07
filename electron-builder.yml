@@ -7,7 +7,11 @@ directories:
 files:
   - package.json
   - src/**/*
+  - build/icon.png
   - "!src/**/*.md"
+  # ffprobe-static ships binaries for every OS (~230 MB); keep only win32/x64 (test with --linux locally: swap the pattern)
+  - "!node_modules/ffprobe-static/bin/{darwin,linux}/**"
+  - "!node_modules/ffmpeg-static/{example.js,install.js,*.README}"
 asarUnpack:
   - node_modules/ffmpeg-static/**
   - node_modules/ffprobe-static/bin/win32/x64/**
@@ -15,10 +19,11 @@ electronLanguages:
   - en-US
 compression: maximum
 win:
+  icon: build/icon.ico
   target:
     - target: portable
       arch:
         - x64
-  signAndEditExecutable: false
+  signAndEditExecutable: true
 portable:
   requestExecutionLevel: user

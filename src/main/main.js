@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const { resolveBinaries } = require('./paths');
@@ -30,6 +30,7 @@ function registerIpc() {
       ffmpegVersion: await versionLine(bins.ffmpeg),
       ffprobeVersion: await versionLine(bins.ffprobe),
       electron: process.versions.electron,
+      version: app.getVersion(),
       packaged: app.isPackaged,
     };
   });
@@ -92,6 +93,7 @@ function createWindow() {
     minHeight: 600,
     backgroundColor: '#15171c',
     title: 'Bulk Video Audio Processor',
+    icon: path.join(__dirname, '../../build/icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -102,6 +104,8 @@ function createWindow() {
     },
   });
   win.setMenuBarVisibility(false);
+  // Dev only: F12 toggles devtools (the application menu and its shortcuts are removed).
+  if (isDev) win.webContents.on('before-input-event', (e, input) => { if (input.key === 'F12' && input.type === 'keyDown') win.webContents.toggleDevTools(); });
   // Dev smoke mode (BVAPE_SMOKE=1): echo renderer console to stdout and quit after 4s (headless CI check).
   if (process.env.BVAPE_SMOKE) {
     win.webContents.on('console-message', (e, level, msg, line, src) => console.log(`[renderer:${level}] ${msg} (${path.basename(src)}:${line})`));
@@ -113,6 +117,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null); // no default menu (File/Edit/View...); shortcuts handled in the renderer
   ff.ensureTempDir();
   registerIpc();
   createWindow();
