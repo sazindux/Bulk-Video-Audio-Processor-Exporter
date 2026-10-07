@@ -40,10 +40,10 @@ Last updated: 2026-10-07 | Last commit: feat(task-0): scaffold + CI
 - State shape: not yet defined (Task 2).
 
 ## Known issues / bugs
-- none yet
+- **ACTION REQUIRED (user, one time):** the GitHub integration token has no `workflows` permission, so `.github/workflows/build.yml` cannot be pushed from the sandbox. The workflow is committed at `ci/build.yml`. Copy it to `.github/workflows/build.yml` in the GitHub web UI (Add file -> Create new file, paste content) or run locally: `mkdir -p .github/workflows && cp ci/build.yml .github/workflows/build.yml && git add . && git commit -m "ci: add workflow" && git push`. Future CI edits by the AI will land in `ci/build.yml` and must be copied the same way.
 
 ## CI status
-- First push: CI unverified at time of writing. Check https://github.com/sazindux/Bulk-Video-Audio-Processor-Exporter/actions
+- CI unverified: workflow file not yet in `.github/workflows/` (see Known issues). Check https://github.com/sazindux/Bulk-Video-Audio-Processor-Exporter/actions
 
 ## Manual tests for the user (Windows)
 - [ ] Download artifact from Actions, run the portable exe, confirm window shows ffmpeg/ffprobe paths ending in `app.asar.unpacked\...` and version strings (not "error").
