@@ -26,9 +26,29 @@ test('filter: audio but no music keeps a single padded branch', () => {
   assert.equal(f, '[0:a:0]aresample=48000,aformat=channel_layouts=stereo,apad=whole_dur=12.5,volume=1.5,alimiter=limit=0.97[aout]');
 });
 
-test('filter: offset is rounded to integer ms and never negative', () => {
+test('filter: positive offset is rounded to integer ms and uses adelay', () => {
   assert.match(buildFilter({ ...base, hasMusic: true, offsetMs: 10.7 }), /adelay=11:all=1/);
-  assert.match(buildFilter({ ...base, hasMusic: true, offsetMs: -40 }), /adelay=0:all=1/);
+  assert.match(buildFilter({ ...base, hasMusic: true, offsetMs: 0 }), /adelay=0:all=1/);
+  assert.doesNotMatch(buildFilter({ ...base, hasMusic: true, offsetMs: 1500 }), /atrim=start/);
+});
+
+test('filter: negative offset trims the start of the music instead of delaying it', () => {
+  const f = buildFilter({ ...base, hasMusic: true, offsetMs: -10500 });
+  assert.equal(f,
+    '[0:a:0]aresample=48000,aformat=channel_layouts=stereo,apad=whole_dur=12.5,volume=1[a0];'
+    + '[1:a:0]atrim=start=10.5,asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,volume=0.5,apad[a1];'
+    + '[a0][a1]amix=inputs=2:duration=first:dropout_transition=0,volume=2,alimiter=limit=0.97[aout]');
+  assert.doesNotMatch(f, /adelay/);
+  // ms precision is preserved, no-audio video still routes music through input 2
+  assert.match(buildFilter({ ...base, hasMusic: true, offsetMs: -40 }), /\[1:a:0\]atrim=start=0\.04,asetpts=PTS-STARTPTS,/);
+  assert.match(buildFilter({ ...base, hasAudio: false, hasMusic: true, offsetMs: -3000 }), /\[2:a:0\]atrim=start=3,asetpts=PTS-STARTPTS,aresample/);
+});
+
+test('args: negative offset reaches the filter_complex argument', () => {
+  const a = buildArgs({ ...base, offsetMs: -2000 });
+  const fc = a[a.indexOf('-filter_complex') + 1];
+  assert.match(fc, /atrim=start=2,asetpts=PTS-STARTPTS/);
+  assert.doesNotMatch(fc, /adelay/);
 });
 
 test('args: exact array for audio + music', () => {

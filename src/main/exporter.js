@@ -25,7 +25,11 @@ function num(x, digits = 3) {
 function buildFilter({ hasAudio, hasMusic, origVol, musicVol, offsetMs, duration }) {
   const D = num(duration);
   const V = num(origVol, 4), M = num(musicVol, 4);
-  const OFF = Math.max(0, Math.round(Number(offsetMs) || 0));
+  const OFF = Math.round(Number(offsetMs) || 0);
+  // offsetMs >= 0: delay the music (silence before it). offsetMs < 0: skip the first |offset| seconds of the
+  // track so a later section lines up with the video start (atrim + reset timestamps, no adelay).
+  const place = OFF >= 0 ? `adelay=${OFF}:all=1,` : '';
+  const musicTrim = OFF < 0 ? `atrim=start=${num(-OFF / 1000)},asetpts=PTS-STARTPTS,` : '';
   // Inputs: 0 = video, then anullsrc (only when the video has no audio), then music.
   const origIn = hasAudio ? '[0:a:0]' : '[1:a:0]';
   const musicIn = hasAudio ? '[1:a:0]' : '[2:a:0]';
@@ -33,7 +37,7 @@ function buildFilter({ hasAudio, hasMusic, origVol, musicVol, offsetMs, duration
   const trim = hasAudio ? '' : `atrim=0:${D},`;
   const a0 = `${origIn}${trim}aresample=${SAMPLE_RATE},aformat=channel_layouts=stereo,apad=whole_dur=${D},volume=${V}`;
   if (!hasMusic) return `${a0},alimiter=limit=0.97[aout]`;
-  const a1 = `${musicIn}aresample=${SAMPLE_RATE},aformat=channel_layouts=stereo,adelay=${OFF}:all=1,volume=${M},apad[a1]`;
+  const a1 = `${musicIn}${musicTrim}aresample=${SAMPLE_RATE},aformat=channel_layouts=stereo,${place}volume=${M},apad[a1]`;
   return `${a0}[a0];${a1};[a0][a1]amix=inputs=2:duration=first:dropout_transition=0,volume=2,alimiter=limit=0.97[aout]`;
 }
 

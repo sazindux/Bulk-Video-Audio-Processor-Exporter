@@ -1,5 +1,5 @@
 # Handoff: Bulk Video Audio Processor
-Last updated: 2026-10-07 | Last commit: fix(task-1): negative music offsets in timeline/inspector
+Last updated: 2026-10-07 | Last commit: fix(task-2): negative offset in Web Audio preview + ffmpeg atrim filter
 
 Bugfix round 2 (negative music offsets + folder picker). Round 1 (tasks 0-7, initial build) is DONE and described under "Decisions made"/"Architecture notes".
 
@@ -8,11 +8,10 @@ Bugfix round 2 (negative music offsets + folder picker). Round 1 (tasks 0-7, ini
 |---|---|---|
 | 0 | Folder Picker & Export Path Fix | DONE |
 | 1 | Timeline Dragging & Negative Offsets | DONE |
-| 2 | Preview & FFmpeg Filter Updates | PENDING |
+| 2 | Preview & FFmpeg Filter Updates | DONE |
 | 3 | Verification & CI Sync | PENDING |
 
 ## Next steps (exact, for the very next chat)
-- TASK 2: `engine.js` -> music source `start(when, offset)` with offset = -musicStart when musicStart<0; and when seeking to position p: musicOffset = p - musicStart (already generic if the code uses p - start; verify). `exporter.js buildFilter` -> `offsetMs<0` => `atrim=start=ABS_SEC,asetpts=PTS-STARTPTS` before aresample (no adelay). Update `test/exporter.test.js` ("never negative" test must change) + add negative case.
 - TASK 3: run `npm test`, keep `ci/build.yml` == `.github/workflows/build.yml`, README offset section, handoff.
 
 ## Decisions made (do not revisit)
@@ -26,6 +25,7 @@ Bugfix round 2 (negative music offsets + folder picker). Round 1 (tasks 0-7, ini
 - Inline rename: invalid names show an error while typing (setting not updated); on blur/Enter the name is auto-sanitized. Output ext = .mp4, or source ext when codec not MP4-compatible.
 - Engine: changing offset/volume while playing reschedules sources seamlessly (setTargetAtTime for gain). Timeline x-axis = video duration; music block width = visible (trimmed) duration.
 - Negative offsets (round 2): `clampStart` range is `[-musicDur, maxStart]`; `musicBlock` returns `{start, visibleStart, visibleDur, skip, trimmed, trimmedStart, trimmedEnd, endsAt}`. Block is pinned at x=0 when start<0 with class `trimmed-start` (hatched left strip) + badge `◀ skips m:ss`; `silent` class when nothing audible. `peaks(buf, cols, fromFrac, toFrac)` draws only the audible slice. Inspector `#in-offset` has dynamic min/max, accepts negative floats and ',' decimals.
+- Export (round 2): `offsetMs >= 0` -> `[m]aresample,aformat,adelay=OFF:all=1,volume,apad`; `offsetMs < 0` -> `[m]atrim=start=ABS_SEC,asetpts=PTS-STARTPTS,aresample,aformat,volume,apad` (no adelay). Verified with real ffmpeg-static on lavfi media (exit 0, 5.02 s output). Engine: `startSources` uses `musicBlock` visibleStart/skip; `src.start(now, pos - start, ...)` works for both signs.
 - Export: args array per spec + `-loglevel error` (stderr tail = real errors only) + `-metadata:s:v/a handler_name=`; `-movflags +faststart` only for .mp4/.mov outputs. No-audio video -> `-f lavfi -i anullsrc=r=48000:cl=stereo` as input 1 with `atrim=0:D`; music becomes input 2. No music -> single padded branch + limiter.
 - Cancel: `child.kill()` then unlink partial output; current item and remaining items go back to `queued`. Queue never overwrites the source (resolveOutputPath treats the source path as taken).
 - Metadata: `-empty_hdlr_name 1` (mp4/mov muxer option) removes handler_name; `-metadata:s handler_name=` is ignored by the muxer. Accepted leftover tags (structural, no personal data): mp4 global major_brand/minor_version/compatible_brands, stream `language`; mkv global `encoder=Lavf` (bitexact, no version), stream `DURATION`, audio stream `ENCODER=Lavc aac` (cannot be suppressed). `checkMetadata` flags everything else incl. any value with version digits.

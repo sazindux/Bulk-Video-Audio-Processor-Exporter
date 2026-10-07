@@ -129,12 +129,17 @@ function startSources(pos) {
     const blk = musicBlock(s.offset, s.musicBuf.duration, s.videoDur);
     const src = ctx.createBufferSource();
     src.buffer = s.musicBuf; src.connect(gainMusic);
-    if (pos < blk.start) {
-      // Music begins in the future.
-      src.start(now + (blk.start - pos), 0, blk.visibleDur);
-    } else if (pos < blk.endsAt) {
-      const into = pos - blk.start;
-      src.start(now, into, blk.visibleDur - into);
+    // blk.start may be negative: then the audible slice starts at timeline 0 and `skip` seconds into the track.
+    // source.start(when, offset, duration) with offset = (pos - start) handles both signs; clamp to the buffer.
+    if (blk.visibleDur > 0) {
+      if (pos < blk.visibleStart) {
+        // Music begins in the future (only possible when start > 0).
+        src.start(now + (blk.visibleStart - pos), blk.skip, blk.visibleDur);
+      } else if (pos < blk.endsAt) {
+        const into = pos - blk.start;          // seconds into the track (>= skip when start < 0)
+        const remaining = blk.endsAt - pos;
+        if (into < s.musicBuf.duration) src.start(now, into, Math.min(remaining, s.musicBuf.duration - into));
+      }
     }
     s.srcMusic = src;
   }
