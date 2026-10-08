@@ -1,5 +1,5 @@
 # Handoff: Bulk Video Audio Processor
-Last updated: 2026-10-08 | Last commit: feat(task-9): preview backend (bvape-media protocol, Range, proxy fallback)
+Last updated: 2026-10-08 | Last commit: feat(task-10): muted video preview card synced to the audio engine
 
 Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tasks 0-7, initial build) and bugfix round 2 (tasks 0-3 below) are DONE and described under "Decisions made"/"Architecture notes".
 
@@ -12,11 +12,11 @@ Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tas
 | 3 | Verification & CI Sync | DONE |
 | 8 | Feature A: drag music from pool to timeline | DONE |
 | 9 | Preview backend: bvape-media protocol, Range, preview:url IPC, ffmpeg proxy fallback | DONE |
-| 10 | Preview UI: card, toggle + pref, sync logic + tests | PENDING |
+| 10 | Preview UI: card, toggle + pref, sync logic + tests | DONE |
 | 11 | Polish: v1.1.0, README, manual checklist | PENDING |
 
 ## Next steps (exact, for the very next chat)
-- Start Task 10 (renderer). Plan: new `src/renderer/preview/sync.js` (pure `decide(event, {enginePlaying, enginePos, videoTime, videoEnded}) -> actions[]`, tested in `test/sync.test.mjs`) + `src/renderer/preview/preview.js` (`initPreview()`: one `<video id="preview-video" muted playsinline preload="metadata">` inside `#preview-card` below the music lane in `timeline-body`; header button `#btn-preview` toggles `hidden` and saves `prefs.previewHidden` via `api.setPrefs`; on selection: `api.previewUrl(v.path)` -> `src`, `poster = v.thumb`, `currentTime = engine.position`, pause; `engine.onChange` tick -> sync rules (resync if |dt|>0.2 s while playing); `<video>` `error` -> `api.previewProxy(v.path)` with "Preparing preview…" overlay, cancel via `api.cancelPreview()` when selection changes; click on card -> `engine.toggle()`). Backend API from Task 9: `api.previewUrl(path)` -> `{ok, value: 'bvape-media://m/<token>'}`, `api.previewProxy(path)` -> `{ok, value: url}` (rejects with 'cancelled' when killed), `api.cancelPreview()`. Smoke hook in `app.js` already proves `<video>` loads + seeks via the protocol (`SMOKE_PREVIEW {duration:5, seeked:3}`); replace it with a check of the real `#preview-video` once the UI exists. Note: `fetch()` of bvape-media is blocked by `connect-src 'self'` (intended) - only `<video>` uses it.
+- Start Task 11 (polish): bump `package.json` version to 1.1.0; README: new features (drag track onto timeline, muted preview card + Preview toggle), troubleshooting (HEVC/MKV -> "Preparing preview…" proxy in `%TEMP%\bvape`, deleted on quit; preview never affects export); refresh the manual checklist below (already contains Task 8/10 rows - verify wording), update CI status line. No workflow change needed.
 - Round-2 manual checks still open for the user (see checklist).
 
 ## Decisions made (do not revisit)
@@ -41,6 +41,7 @@ Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tas
 - Size: `files` excludes `ffprobe-static/bin/{darwin,linux}` (~230 MB that would otherwise be packed into the asar) and ffmpeg-static install scripts. Local `--linux --dir` check: app.asar 384 KB + unpacked ffmpeg only.
 - `src/shared/package.json` = `{"type":"module"}` so main can `import()` filename.js without warnings.
 - Smoke-tested locally with ffmpeg-static linux binaries + lavfi media (probe, thumb, proxy, errors) - works.
+- Task 10 (preview UI): `src/renderer/preview/sync.js` pure `decide(event, ctx)` -> actions (`select`: seek+pause; `play`: seek+play; `pause`/`engine-end`: pause+seek; `seek`: seek; `tick`: play if needed, reseek only if drift > 0.2 s, nothing when `videoEnded`; `ended`: pause). `preview.js`: single `#preview-video` (muted/defaultMuted/volume 0, re-muted on volumechange), `aspect-ratio` from probe, poster = thumb, `#btn-preview` toggles `#preview-card.hidden` -> `prefs.previewHidden`. Fallback to `api.previewProxy` on `error` OR on `loadedmetadata` with `videoWidth === 0` (HEVC with decodable audio fires no error on Linux Chromium); 'Preparing preview…' overlay; `api.cancelPreview()` on selection change. Click on card = `engine.toggle()`. Verified headless: h264 (320x240, seek 3 s follows engine) and HEVC (falls back to 480x360 proxy). `fetch()` of bvape-media is blocked by `connect-src 'self'` (intended) - only `<video>` uses it.
 - Task 9 (preview backend): `src/main/preview.js` has no electron import (unit-testable): `parseRange(header,size)` -> `{status:200|206|416,start,end}`, `rangeHeaders`, `registerPreview(path)` -> `bvape-media://m/<32-hex token>` (random token per path, only .mp4/.mov/.mkv), `handleRequest(Request)` -> `Response` (manual Range via `fs.createReadStream` + `Readable.toWeb`; `net.fetch(file://)` was not used so behaviour is deterministic), `previewProxy(path)` -> URL of `<temp>/bvape/<hash>_preview.mp4` (360p libx264 ultrafast crf30, `-an`, cached, one build at a time, `cancelPreviewProxy()` kills + unlinks). `main.js`: `registerSchemesAsPrivileged` at module load, `protocol.handle` in whenReady, IPC `preview:url|proxy|cancel`, `will-quit` cancels proxy before temp cleanup. CSP `media-src 'self' blob: bvape-media:`.
 - Task 8 (drag music -> timeline): no `inMs` setting exists (negative offset = skip), so a drop sets only `musicId` + `offsetMs` (start clamped to `[0, maxStart]`, volumes kept). `dropPlacement(x, laneW, videoDur, musicDur)` + `isFileDrag(types)` in `clamp.js`. Dragged id lives in `src/renderer/ui/musicDrag.js` (module var + MIME `application/x-bvape-music`). All OS-file drop zones in `mediaPool.setupDrop` ignore drags without a `Files` type. Lane shows `#lane-placeholder` when a probed video has no music; `#drop-ghost` follows the pointer (left edge) with width = min(track, remaining).
 
@@ -67,6 +68,7 @@ Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tas
   - `src/renderer/ui/inspector.js` -> settings form bindings, outputExt(v), apply-all (music/offset re-clamped per video), output folder picker (persisted)
   - `src/renderer/ui/mediaPool.js` -> importPaths (filters by ext, probes 3 at a time), drag-drop (pathForFile), video/music lists (music items `draggable`), music preview `<audio>` via blob URL
   - `src/renderer/ui/musicDrag.js` -> shared dragged-music-id state for pool -> timeline drags
+  - `src/renderer/preview/sync.js` (pure, tested) + `preview/preview.js` -> muted video preview card synced to the engine
   - `test/*.test.js` -> node:test unit tests
   - `.github/workflows/build.yml` -> win portable build, artifact, release on tags
 - IPC channels (invoke; media:* return `{ok:true,value}` or `{ok:false,error}` with ffmpeg stderr tail):
@@ -78,7 +80,7 @@ Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tas
   - `media:proxy` -> (path) -> m4a path in temp (fails on no-audio video: caller must check hasAudio first)
   - `media:readFile` -> (path) -> ArrayBuffer
   - `preview:url` -> (path) -> {ok, value: 'bvape-media://m/<token>'}; `preview:proxy` -> (path) -> {ok, value: url} (error 'cancelled' if killed); `preview:cancel` -> {ok} (preload: `previewUrl`, `previewProxy`, `cancelPreview`)
-  - `prefs:get` -> () -> {outputDir?}; `prefs:set` -> (patch) -> merged prefs
+  - `prefs:get` -> () -> {outputDir?, previewHidden?}; `prefs:set` -> (patch) -> merged prefs
   - `export:start` -> ({outputDir, items:[{id, video, music|null, hasAudio, duration, origVol, musicVol, offsetMs, outputName, ext}]}) -> {ok}|{ok:false,error}; `export:cancel` -> {ok}; `shell:openPath` -> (dir:string) -> {ok}|{ok:false,error} (preload name: `openPath`; non-string -> error)
   - main -> renderer pushes: `export:progress` {id, progress 0..1}; `export:item` {id, status, error?, outputPath?, verification?}; `export:done` {ok, failed, cancelled, total, error?}
   - preload also exposes `pathForFile(File)` (webUtils.getPathForFile), `startExport`, `cancelExport`, `onExportEvent(cb(channel,data))`, `openFolder(dir)`
@@ -106,4 +108,5 @@ Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tas
 - [ ] Exporting twice to the same folder creates ` (1)` copies; exporting into the source folder never overwrites the source.
 - [ ] Paths with spaces/unicode (e.g. `C:\Vidéos test\日本.mp4`) import and export correctly.
 - [ ] Round 2: Output folder picker shows the real path (not `[object Object]`), export writes into it, *Open folder* opens it. Drag the music block left past 0 -> hatched strip + `◀ skips` badge; *Music start* negative; typing `-10.5` works; preview from 0:00 plays the song from 10.5 s in; export matches.
+- [ ] Round 3 (Task 10): *Preview* button in the timeline header shows a small muted card under the music lane; it shows the current frame, follows Play/Pause/Space and timeline clicks (frame updates while paused), stays within ~260x220 for portrait 9:16 videos (black bars, no overflow), clicking the card toggles play; HEVC/odd MKV video shows "Preparing preview…" then plays via proxy; hide it, restart -> still hidden; export output unchanged (`-c:v copy`).
 - [ ] Round 3 (Task 8): drag a track from the Music pool over the lane -> lane highlights, ghost block's left edge follows the pointer, ghost shrinks near the end for long tracks; drop at several positions -> block + waveform appear there, *Music start* matches; drop onto an existing block replaces the track; drop while playing keeps playing; drop with no video selected -> toast; dragging OS files into the pool/timeline still imports.

@@ -43,6 +43,7 @@
           <button id="btn-play" class="btn btn-icon" title="Play / Pause (Space)" disabled>&#9654;</button>
           <button id="btn-stop" class="btn btn-icon btn-ghost" title="Stop" disabled>&#9632;</button>
           <span class="time" id="time-display">0:00.0 / 0:00.0</span>
+          <button id="btn-preview" class="btn btn-sm btn-ghost" title="Show / hide the muted video preview">Preview</button>
         </div>
       </header>
       <div class="timeline-body" id="timeline-body">
@@ -62,6 +63,12 @@
               <span class="trimmed-badge trimmed-start-badge" id="trimmed-start-badge" hidden>&#9664; skips</span>
             </div>
           </div>
+        </div>
+        <div class="preview-card empty" id="preview-card" hidden title="Click to play / pause">
+          <video id="preview-video" muted playsinline disablepictureinpicture preload="metadata"></video>
+          <span class="preview-empty">No video selected</span>
+          <span class="preview-status" id="preview-status" hidden></span>
+          <span class="preview-label">Preview only (muted)</span>
         </div>
         <div class="ruler" id="ruler"></div>
         <div class="playhead" id="playhead" hidden></div>

@@ -86,6 +86,15 @@ button, input, select { font: inherit; color: inherit; }
   background: repeating-linear-gradient(135deg, rgba(245,165,36,.55) 0 3px, transparent 3px 6px); }
 .music-block.trimmed-end { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .music-block.silent { opacity: .45; border-style: dashed; }
+/* Muted video preview card (follows the audio engine; never used for export) */
+.preview-card { position: relative; align-self: flex-start; max-width: 260px; max-height: 220px; min-width: 120px; min-height: 68px; background: #000; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: pointer; display: flex; }
+.preview-card video { display: block; width: auto; height: auto; max-width: 260px; max-height: 220px; aspect-ratio: 16 / 9; object-fit: contain; background: #000; }
+.preview-card.empty video { visibility: hidden; width: 200px; }
+.preview-empty, .preview-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; background: rgba(0,0,0,.55); pointer-events: none; }
+.preview-empty { display: none; }
+.preview-card.empty .preview-empty { display: flex; }
+.preview-label { position: absolute; left: 6px; bottom: 4px; font-size: 10px; color: var(--muted); background: rgba(0,0,0,.5); padding: 0 4px; border-radius: 3px; pointer-events: none; }
+.btn.active { border-color: var(--accent); color: var(--accent); }
 .ruler { position: absolute; left: 16px; right: 16px; bottom: 6px; height: 16px; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
 .ruler span { position: absolute; transform: translateX(-50%); }
 .playhead { position: absolute; top: 12px; bottom: 24px; width: 1px; background: var(--danger); pointer-events: none; }

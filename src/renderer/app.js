@@ -3,12 +3,15 @@ import { initMediaPool, importPaths } from './ui/mediaPool.js';
 import { initInspector } from './ui/inspector.js';
 import { initExportPanel } from './ui/exportPanel.js';
 import { initTimeline } from './audio/timeline.js';
+import { initPreview } from './preview/preview.js';
+import { engine } from './audio/engine.js';
 import { state, setOutputDir } from './state.js';
 
 initMediaPool();
 initTimeline();
 initInspector();
 initExportPanel();
+try { initPreview(); } catch (e) { console.error('preview init failed', e); } // preview must never block the rest of the UI
 
 // Headless smoke test support (BVAPE_SMOKE=1 in main): auto-import files and report state.
 const smoke = await window.bvape.smokeFiles();
@@ -39,19 +42,15 @@ if (smoke.length) {
       console.log('SMOKE_EXPORT ' + JSON.stringify(state.videos.map((x) => ({ n: x.name, s: x.settings.status, p: x.settings.progress, out: x.settings.outputPath, err: x.settings.error }))));
     }
   }
-  // Preview protocol check: a <video> must load metadata + seek through bvape-media:// (Range requests).
+  // Preview check: the real #preview-video loads via bvape-media:// and follows engine seeks (Range requests).
   if (v) {
-    const u = await window.bvape.previewUrl(v.path);
-    const res = { url: u.ok ? u.value.slice(0, 16) : u.error };
-    if (u.ok) {
-      const vid = document.createElement('video'); vid.muted = true; vid.preload = 'metadata'; vid.src = u.value;
-      await new Promise((r) => { vid.onloadedmetadata = r; vid.onerror = r; setTimeout(r, 3000); });
-      res.duration = vid.duration; res.size = `${vid.videoWidth}x${vid.videoHeight}`; res.error = vid.error?.code ?? null;
-      vid.currentTime = 3;
-      await new Promise((r) => { vid.onseeked = r; setTimeout(r, 2000); });
-      res.seeked = vid.currentTime;
-    }
-    console.log('SMOKE_PREVIEW ' + JSON.stringify(res));
+    const vid = document.getElementById('preview-video'), card = document.getElementById('preview-card');
+    if (card.hidden) document.getElementById('btn-preview').click();
+    await new Promise((r) => { const t = setInterval(() => { if (vid.videoWidth && document.getElementById('preview-status').hidden) { clearInterval(t); r(); } }, 100); setTimeout(() => { clearInterval(t); r(); }, 6000); });
+    engine.seek(3);
+    await new Promise((r) => { vid.onseeked = r; setTimeout(r, 2000); });
+    console.log('SMOKE_PREVIEW ' + JSON.stringify({ url: vid.src.slice(0, 16), hidden: card.hidden, muted: vid.muted, duration: vid.duration,
+      size: `${vid.videoWidth}x${vid.videoHeight}`, ratio: vid.style.aspectRatio, error: vid.error?.code ?? null, seeked: vid.currentTime, paused: vid.paused }));
   }
   console.log('SMOKE ' + JSON.stringify({
     videos: state.videos.map((x) => ({ n: x.name, d: x.probe?.duration, thumb: !!x.thumb, err: x.error })),
