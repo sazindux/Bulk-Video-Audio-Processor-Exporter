@@ -1,7 +1,7 @@
 {
   "name": "bulk-video-audio-processor",
   "productName": "Bulk Video Audio Processor",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Batch-add background music to videos without re-encoding video, balance audio, rename outputs and strip all metadata.",
   "main": "src/main/main.js",
   "author": "sazindux",

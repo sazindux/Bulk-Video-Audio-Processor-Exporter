@@ -1,5 +1,5 @@
 # Handoff: Bulk Video Audio Processor
-Last updated: 2026-10-08 | Last commit: feat(task-10): muted video preview card synced to the audio engine
+Last updated: 2026-10-08 | Last commit: feat(task-11): v1.1.0 release prep (README, checklist)
 
 Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tasks 0-7, initial build) and bugfix round 2 (tasks 0-3 below) are DONE and described under "Decisions made"/"Architecture notes".
 
@@ -13,11 +13,11 @@ Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tas
 | 8 | Feature A: drag music from pool to timeline | DONE |
 | 9 | Preview backend: bvape-media protocol, Range, preview:url IPC, ffmpeg proxy fallback | DONE |
 | 10 | Preview UI: card, toggle + pref, sync logic + tests | DONE |
-| 11 | Polish: v1.1.0, README, manual checklist | PENDING |
+| 11 | Polish: v1.1.0, README, manual checklist | DONE |
 
 ## Next steps (exact, for the very next chat)
-- Start Task 11 (polish): bump `package.json` version to 1.1.0; README: new features (drag track onto timeline, muted preview card + Preview toggle), troubleshooting (HEVC/MKV -> "Preparing preview…" proxy in `%TEMP%\bvape`, deleted on quit; preview never affects export); refresh the manual checklist below (already contains Task 8/10 rows - verify wording), update CI status line. No workflow change needed.
-- Round-2 manual checks still open for the user (see checklist).
+- Round 3 (Tasks 8-11) is DONE: `npm test` 58/58 green; headless xvfb smoke passes (h264 preview seeks via bvape-media, HEVC falls back to the proxy). Version 1.1.0. No workflow change was needed (`ci/build.yml` == `.github/workflows/build.yml`).
+- User-driven: check the Actions run for `feat(task-11)` is green, download the portable exe, run the "Round 3" manual checks below, tag `v1.1.0` for a release. File findings under "Known issues" as new tasks.
 
 ## Decisions made (do not revisit)
 - Electron 33.x, electron-builder 25.x. `npm test` = `node --test` (auto-discovers `test/*.test.js`, works on Node 20 and 22).
@@ -93,7 +93,7 @@ Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tas
 - Fixed (task-0, bugfix round 2): folder picker showed `[object Object]` because `preload.js` had two `openFolder` keys - the later `shell:openPath` one shadowed the dialog one, so the picker returned `{ok:true}`. Renamed to `pickFolder`/`openPath`, main returns strictly string|null, `setOutputDir` sanitizes via `asPathString`, corrupt prefs are cleared at startup.
 
 ## CI status
-- CI unverified from the sandbox (workflow file must be copied by the user; see Known issues). Local checks: `npm test` 30/30 green; `electron-builder --dir --linux` packages fine with the current config; headless xvfb smoke (import, inspector, full export + verification) passes.
+- CI unverified from the sandbox. Local checks: `npm test` 58/58 green; headless xvfb smoke (import, inspector, preview load/seek, HEVC proxy fallback, full export + verification) passes. Smoke prints `SMOKE_PREVIEW {...}` (expects `size` != 0x0, `seeked` 3, `muted` true).
 - Check: https://github.com/sazindux/Bulk-Video-Audio-Processor-Exporter/actions
 
 ## Manual tests for the user (Windows)
@@ -108,5 +108,13 @@ Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tas
 - [ ] Exporting twice to the same folder creates ` (1)` copies; exporting into the source folder never overwrites the source.
 - [ ] Paths with spaces/unicode (e.g. `C:\Vidéos test\日本.mp4`) import and export correctly.
 - [ ] Round 2: Output folder picker shows the real path (not `[object Object]`), export writes into it, *Open folder* opens it. Drag the music block left past 0 -> hatched strip + `◀ skips` badge; *Music start* negative; typing `-10.5` works; preview from 0:00 plays the song from 10.5 s in; export matches.
-- [ ] Round 3 (Task 10): *Preview* button in the timeline header shows a small muted card under the music lane; it shows the current frame, follows Play/Pause/Space and timeline clicks (frame updates while paused), stays within ~260x220 for portrait 9:16 videos (black bars, no overflow), clicking the card toggles play; HEVC/odd MKV video shows "Preparing preview…" then plays via proxy; hide it, restart -> still hidden; export output unchanged (`-c:v copy`).
-- [ ] Round 3 (Task 8): drag a track from the Music pool over the lane -> lane highlights, ghost block's left edge follows the pointer, ghost shrinks near the end for long tracks; drop at several positions -> block + waveform appear there, *Music start* matches; drop onto an existing block replaces the track; drop while playing keeps playing; drop with no video selected -> toast; dragging OS files into the pool/timeline still imports.
+Round 3 (v1.1.0):
+- [ ] Drag a track from the Music pool over the lane: lane highlights, ghost block's left edge follows the pointer, ghost shrinks near the end for long tracks; ghost disappears on leave/drop.
+- [ ] Drop at start, middle and near the end -> block + music waveform appear there; *Music start* matches the drop (never negative; short tracks fit, long tracks trimmed at the end).
+- [ ] Drop onto an existing block replaces the track and keeps the volumes; dropping while playing keeps playing with the new track.
+- [ ] Drop with no video selected -> toast "Select a video first"; dragging OS files into the pool/timeline still imports them (no ghost shown).
+- [ ] Preview card appears under the music lane (toggle with *Preview*); frame follows Play/Pause/Space and timeline clicks, including while paused (scrubbing updates the frame); clicking the card toggles play.
+- [ ] Portrait 9:16 video fits inside ~260x220 with black bars, no overflow; the card shows the thumbnail while loading.
+- [ ] HEVC (iPhone) or odd-codec `.mkv` video -> "Preparing preview…" then plays via the proxy; `%TEMP%\bvape\*_preview.mp4` is deleted after quitting.
+- [ ] Hide the preview, restart -> still hidden (and vice versa).
+- [ ] Export output unchanged vs 1.0.0: video stream copied (same size/bitrate in MediaInfo), metadata clean, music placement equals the preview.
