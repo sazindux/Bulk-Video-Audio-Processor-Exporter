@@ -1,11 +1,15 @@
 'use strict';
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const { resolveBinaries } = require('./paths');
 const ff = require('./ffmpeg');
 const prefs = require('./prefs');
 const exporter = require('./exporter');
+const preview = require('./preview');
+
+// Muted video preview: must be registered before app.ready. Only token-registered files are served.
+protocol.registerSchemesAsPrivileged([{ scheme: preview.SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
 let activeExport = null; // queue controller while an export runs
 
@@ -63,6 +67,10 @@ function registerIpc() {
   ipcMain.handle('media:probe', wrap((p) => ff.probe(p)));
   ipcMain.handle('media:thumbnail', wrap((p, d) => ff.thumbnail(p, d)));
   ipcMain.handle('media:proxy', wrap((p) => ff.audioProxy(p)));
+  // Video preview: opaque bvape-media:// URL (never a raw path); proxy = small H.264 fallback (killable).
+  ipcMain.handle('preview:url', wrap(async (p) => preview.registerPreview(p)));
+  ipcMain.handle('preview:proxy', wrap((p) => preview.previewProxy(p)));
+  ipcMain.handle('preview:cancel', () => { preview.cancelPreviewProxy(); return { ok: true }; });
   // Smoke mode only: lets the renderer auto-import files given in BVAPE_SMOKE_FILES (semicolon-separated).
   ipcMain.handle('env:smokeFiles', () => (process.env.BVAPE_SMOKE ? String(process.env.BVAPE_SMOKE_FILES || '').split(';').filter(Boolean) : []));
   ipcMain.handle('media:readFile', wrap(async (p) => {
@@ -123,10 +131,11 @@ function createWindow() {
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null); // no default menu (File/Edit/View...); shortcuts handled in the renderer
   ff.ensureTempDir();
+  protocol.handle(preview.SCHEME, preview.handleRequest);
   registerIpc();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
 app.on('window-all-closed', () => { app.quit(); });
-app.on('will-quit', () => { if (activeExport) activeExport.cancel(); ff.cleanTempDir(); });
+app.on('will-quit', () => { if (activeExport) activeExport.cancel(); preview.cancelPreviewProxy(); ff.cleanTempDir(); });

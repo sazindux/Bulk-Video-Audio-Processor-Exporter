@@ -39,6 +39,20 @@ if (smoke.length) {
       console.log('SMOKE_EXPORT ' + JSON.stringify(state.videos.map((x) => ({ n: x.name, s: x.settings.status, p: x.settings.progress, out: x.settings.outputPath, err: x.settings.error }))));
     }
   }
+  // Preview protocol check: a <video> must load metadata + seek through bvape-media:// (Range requests).
+  if (v) {
+    const u = await window.bvape.previewUrl(v.path);
+    const res = { url: u.ok ? u.value.slice(0, 16) : u.error };
+    if (u.ok) {
+      const vid = document.createElement('video'); vid.muted = true; vid.preload = 'metadata'; vid.src = u.value;
+      await new Promise((r) => { vid.onloadedmetadata = r; vid.onerror = r; setTimeout(r, 3000); });
+      res.duration = vid.duration; res.size = `${vid.videoWidth}x${vid.videoHeight}`; res.error = vid.error?.code ?? null;
+      vid.currentTime = 3;
+      await new Promise((r) => { vid.onseeked = r; setTimeout(r, 2000); });
+      res.seeked = vid.currentTime;
+    }
+    console.log('SMOKE_PREVIEW ' + JSON.stringify(res));
+  }
   console.log('SMOKE ' + JSON.stringify({
     videos: state.videos.map((x) => ({ n: x.name, d: x.probe?.duration, thumb: !!x.thumb, err: x.error })),
     music: state.music.map((x) => ({ n: x.name, d: x.duration, err: x.error })),

@@ -1,5 +1,5 @@
 # Handoff: Bulk Video Audio Processor
-Last updated: 2026-10-08 | Last commit: feat(task-8): drag music from pool onto the timeline
+Last updated: 2026-10-08 | Last commit: feat(task-9): preview backend (bvape-media protocol, Range, proxy fallback)
 
 Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tasks 0-7, initial build) and bugfix round 2 (tasks 0-3 below) are DONE and described under "Decisions made"/"Architecture notes".
 
@@ -11,12 +11,12 @@ Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tas
 | 2 | Preview & FFmpeg Filter Updates | DONE |
 | 3 | Verification & CI Sync | DONE |
 | 8 | Feature A: drag music from pool to timeline | DONE |
-| 9 | Preview backend: bvape-media protocol, Range, preview:url IPC, ffmpeg proxy fallback | PENDING |
+| 9 | Preview backend: bvape-media protocol, Range, preview:url IPC, ffmpeg proxy fallback | DONE |
 | 10 | Preview UI: card, toggle + pref, sync logic + tests | PENDING |
 | 11 | Polish: v1.1.0, README, manual checklist | PENDING |
 
 ## Next steps (exact, for the very next chat)
-- Start Task 9 (main process only). Plan: `protocol.registerSchemesAsPrivileged([{scheme:'bvape-media', privileges:{standard:true, secure:true, supportFetchAPI:true, stream:true}}])` before `app.whenReady` in `main.js`; new `src/main/preview.js` (CommonJS) with pure `parseRange(header, size)` -> `{start,end}|null` (+ `test/preview.test.js`), token map (`registerPreview(path)` -> `bvape-media://m/<token>`, only .mp4/.mov/.mkv), `protocol.handle('bvape-media', handler)` doing manual Range via `fs.createReadStream` + `Readable.toWeb` (206/Accept-Ranges/Content-Range/Content-Length/Content-Type; 416 on bad range; 404 unknown token), `previewProxy(path)` -> `<temp>/bvape/<hash>_preview.mp4` via ffmpeg args array `-an -vf scale=-2:360 -c:v libx264 -preset ultrafast -crf 30 -pix_fmt yuv420p -movflags +faststart`, killable (`cancelPreviewProxy()`), cached. IPC `preview:url(path)`, `preview:proxy(path)`, `preview:cancel()`; preload `previewUrl`, `previewProxy`, `cancelPreview`. CSP: add `bvape-media:` to `media-src`. Proxies live in the existing temp dir so the will-quit cleanup covers them.
+- Start Task 10 (renderer). Plan: new `src/renderer/preview/sync.js` (pure `decide(event, {enginePlaying, enginePos, videoTime, videoEnded}) -> actions[]`, tested in `test/sync.test.mjs`) + `src/renderer/preview/preview.js` (`initPreview()`: one `<video id="preview-video" muted playsinline preload="metadata">` inside `#preview-card` below the music lane in `timeline-body`; header button `#btn-preview` toggles `hidden` and saves `prefs.previewHidden` via `api.setPrefs`; on selection: `api.previewUrl(v.path)` -> `src`, `poster = v.thumb`, `currentTime = engine.position`, pause; `engine.onChange` tick -> sync rules (resync if |dt|>0.2 s while playing); `<video>` `error` -> `api.previewProxy(v.path)` with "Preparing preview…" overlay, cancel via `api.cancelPreview()` when selection changes; click on card -> `engine.toggle()`). Backend API from Task 9: `api.previewUrl(path)` -> `{ok, value: 'bvape-media://m/<token>'}`, `api.previewProxy(path)` -> `{ok, value: url}` (rejects with 'cancelled' when killed), `api.cancelPreview()`. Smoke hook in `app.js` already proves `<video>` loads + seeks via the protocol (`SMOKE_PREVIEW {duration:5, seeked:3}`); replace it with a check of the real `#preview-video` once the UI exists. Note: `fetch()` of bvape-media is blocked by `connect-src 'self'` (intended) - only `<video>` uses it.
 - Round-2 manual checks still open for the user (see checklist).
 
 ## Decisions made (do not revisit)
@@ -41,6 +41,7 @@ Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tas
 - Size: `files` excludes `ffprobe-static/bin/{darwin,linux}` (~230 MB that would otherwise be packed into the asar) and ffmpeg-static install scripts. Local `--linux --dir` check: app.asar 384 KB + unpacked ffmpeg only.
 - `src/shared/package.json` = `{"type":"module"}` so main can `import()` filename.js without warnings.
 - Smoke-tested locally with ffmpeg-static linux binaries + lavfi media (probe, thumb, proxy, errors) - works.
+- Task 9 (preview backend): `src/main/preview.js` has no electron import (unit-testable): `parseRange(header,size)` -> `{status:200|206|416,start,end}`, `rangeHeaders`, `registerPreview(path)` -> `bvape-media://m/<32-hex token>` (random token per path, only .mp4/.mov/.mkv), `handleRequest(Request)` -> `Response` (manual Range via `fs.createReadStream` + `Readable.toWeb`; `net.fetch(file://)` was not used so behaviour is deterministic), `previewProxy(path)` -> URL of `<temp>/bvape/<hash>_preview.mp4` (360p libx264 ultrafast crf30, `-an`, cached, one build at a time, `cancelPreviewProxy()` kills + unlinks). `main.js`: `registerSchemesAsPrivileged` at module load, `protocol.handle` in whenReady, IPC `preview:url|proxy|cancel`, `will-quit` cancels proxy before temp cleanup. CSP `media-src 'self' blob: bvape-media:`.
 - Task 8 (drag music -> timeline): no `inMs` setting exists (negative offset = skip), so a drop sets only `musicId` + `offsetMs` (start clamped to `[0, maxStart]`, volumes kept). `dropPlacement(x, laneW, videoDur, musicDur)` + `isFileDrag(types)` in `clamp.js`. Dragged id lives in `src/renderer/ui/musicDrag.js` (module var + MIME `application/x-bvape-music`). All OS-file drop zones in `mediaPool.setupDrop` ignore drags without a `Files` type. Lane shows `#lane-placeholder` when a probed video has no music; `#drop-ghost` follows the pointer (left edge) with width = min(track, remaining).
 
 ## Architecture notes
@@ -59,6 +60,7 @@ Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tas
   - `src/renderer/audio/timeline.js` -> waveform canvas, ruler, playhead (rAF), draggable music block (pointer capture), trimmed badge, click-to-seek, Space toggles play
   - `src/shared/outputPath.js` (ESM) -> asPathString(any)->string|null, dialogResultToPath(result); used by state.setOutputDir + inspector
   - `src/shared/filename.js` (ESM) -> sanitizeName, validateName, uniqueName(base, ext, exists, avoidSet), MAX_NAME=200
+  - `src/main/preview.js` -> bvape-media protocol handler (token map, Range), preview proxy builder
   - `src/main/prefs.js` -> JSON prefs in userData/prefs.json ({outputDir})
   - `src/main/exporter.js` -> buildFilter, buildArgs (args array), parseProgress, runExport (spawn, progress, cancel), resolveOutputPath (sanitize + unique + never source), startQueue (sequential, sends export:* events, optional verify hook)
   - `src/renderer/ui/exportPanel.js` -> buildPayload from state, start/cancel/open folder, mirrors events into settings.status/progress/outputPath/verification, overall bar
@@ -75,6 +77,7 @@ Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tas
   - `media:thumbnail` -> (path, duration) -> jpg path in temp
   - `media:proxy` -> (path) -> m4a path in temp (fails on no-audio video: caller must check hasAudio first)
   - `media:readFile` -> (path) -> ArrayBuffer
+  - `preview:url` -> (path) -> {ok, value: 'bvape-media://m/<token>'}; `preview:proxy` -> (path) -> {ok, value: url} (error 'cancelled' if killed); `preview:cancel` -> {ok} (preload: `previewUrl`, `previewProxy`, `cancelPreview`)
   - `prefs:get` -> () -> {outputDir?}; `prefs:set` -> (patch) -> merged prefs
   - `export:start` -> ({outputDir, items:[{id, video, music|null, hasAudio, duration, origVol, musicVol, offsetMs, outputName, ext}]}) -> {ok}|{ok:false,error}; `export:cancel` -> {ok}; `shell:openPath` -> (dir:string) -> {ok}|{ok:false,error} (preload name: `openPath`; non-string -> error)
   - main -> renderer pushes: `export:progress` {id, progress 0..1}; `export:item` {id, status, error?, outputPath?, verification?}; `export:done` {ok, failed, cancelled, total, error?}

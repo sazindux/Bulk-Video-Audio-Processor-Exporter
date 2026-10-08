@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld('bvape', {
   /** Returns an ArrayBuffer of the file (used to decode music / proxy audio in Web Audio). */
   readFile: (filePath) => ipcRenderer.invoke('media:readFile', filePath),
 
+  /** Muted video preview: opaque bvape-media:// URL for a video; proxy = small H.264 fallback (killable). */
+  previewUrl: (filePath) => ipcRenderer.invoke('preview:url', filePath),
+  previewProxy: (filePath) => ipcRenderer.invoke('preview:proxy', filePath),
+  cancelPreview: () => ipcRenderer.invoke('preview:cancel'),
+
   /** Export queue. Events: 'export:progress' {id, progress}, 'export:item' {id, status, error?, outputPath?, verification?}, 'export:done' {ok, failed, cancelled, total}. */
   startExport: (payload) => ipcRenderer.invoke('export:start', payload),
   cancelExport: () => ipcRenderer.invoke('export:cancel'),
