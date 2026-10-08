@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { clampStart, musicBlock, pxToSec, secToPx, toMs, minStart, maxStart } from '../src/renderer/audio/clamp.js';
+import { clampStart, musicBlock, pxToSec, secToPx, toMs, minStart, maxStart, dropPlacement, isFileDrag } from '../src/renderer/audio/clamp.js';
 
 test('clampStart: music shorter than video (right bound unchanged)', () => {
   assert.strictEqual(clampStart(20, 10, 60), 20);
@@ -70,4 +70,31 @@ test('px <-> sec conversions and ms rounding (sign preserved)', () => {
   assert.strictEqual(secToPx(10, 100, 0), 0);
   assert.strictEqual(toMs(1.23456), 1235);
   assert.strictEqual(toMs(-10.5), -10500);
+});
+
+test('dropPlacement: left edge follows pointer, clamped to the lane', () => {
+  // lane 600px, video 60s -> 10px/s; music 10s
+  assert.deepStrictEqual(dropPlacement(200, 600, 60, 10), { start: 20, left: 200, width: 100 });
+  assert.deepStrictEqual(dropPlacement(-50, 600, 60, 10), { start: 0, left: 0, width: 100 });  // never < 0
+  assert.deepStrictEqual(dropPlacement(590, 600, 60, 10), { start: 50, left: 500, width: 100 }); // short music fits
+});
+
+test('dropPlacement: long music is trimmed at the video end', () => {
+  const g = dropPlacement(300, 600, 60, 120);
+  assert.strictEqual(g.start, 30);
+  assert.strictEqual(g.width, 300); // remaining 30 s
+  assert.deepStrictEqual(dropPlacement(900, 600, 60, 120), { start: 60, left: 600, width: 0 });
+});
+
+test('dropPlacement: degenerate inputs are safe', () => {
+  assert.deepStrictEqual(dropPlacement(10, 0, 60, 10), { start: 0, left: 0, width: 0 });
+  assert.deepStrictEqual(dropPlacement(10, 600, 0, 10), { start: 0, left: 0, width: 0 });
+  assert.deepStrictEqual(dropPlacement(10, 600, 60, 0), { start: 0, left: 0, width: 0 });
+});
+
+test('isFileDrag: only OS file drags contain "Files"', () => {
+  assert.strictEqual(isFileDrag(['Files']), true);
+  assert.strictEqual(isFileDrag(['application/x-bvape-music']), false);
+  assert.strictEqual(isFileDrag([]), false);
+  assert.strictEqual(isFileDrag(undefined), false);
 });

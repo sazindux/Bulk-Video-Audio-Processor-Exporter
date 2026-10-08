@@ -1,8 +1,9 @@
 // Audio-only timeline: waveform of the original audio, draggable music block, playhead, transport.
 import { state, subscribe, selectedVideo, getMusic, updateSettings } from '../state.js';
 import { engine, decodeVideoAudio, decodeFile, peaks } from './engine.js';
-import { musicBlock, clampStart, pxToSec, secToPx, toMs } from './clamp.js';
+import { musicBlock, clampStart, pxToSec, secToPx, toMs, dropPlacement } from './clamp.js';
 import { fmtTime, toast } from '../util.js';
+import { isMusicDrag, draggedMusicId, endMusicDrag } from '../ui/musicDrag.js';
 
 const $ = (id) => document.getElementById(id);
 const ui = {};
@@ -56,7 +57,9 @@ function drawRuler(videoDur) {
 function layoutMusicBlock() {
   const v = selectedVideo();
   const m = v && getMusic(v.settings.musicId);
-  if (!v || !v.probe || !m || !m.duration) { ui.block.hidden = true; return; }
+  const show = !!(v && v.probe && m && m.duration);
+  ui.placeholder.hidden = show || !(v && v.probe);
+  if (!show) { ui.block.hidden = true; return; }
   const lane = ui.lane.clientWidth, vd = v.probe.duration;
   const blk = musicBlock(v.settings.offsetMs / 1000, m.duration, vd);
   ui.block.hidden = false;
@@ -165,6 +168,43 @@ function setupDrag() {
   ui.block.addEventListener('pointercancel', end);
 }
 
+/* ---------- drop a track from the music pool ---------- */
+
+function setupMusicDrop() {
+  const lane = ui.lane, ghost = ui.ghost;
+  const clear = () => { lane.classList.remove('drop-over'); ghost.hidden = true; };
+  const target = () => {
+    const v = selectedVideo(); const m = getMusic(draggedMusicId());
+    return v && v.probe && m && !m.error && m.duration > 0 ? { v, m } : null;
+  };
+  lane.addEventListener('dragenter', (e) => { if (isMusicDrag(e)) e.preventDefault(); });
+  lane.addEventListener('dragover', (e) => {
+    if (!isMusicDrag(e)) return;
+    e.preventDefault(); e.stopPropagation();
+    const t = target();
+    e.dataTransfer.dropEffect = t ? 'copy' : 'none';
+    if (!t) return clear();
+    const r = lane.getBoundingClientRect();
+    const g = dropPlacement(e.clientX - r.left, r.width, t.v.probe.duration, t.m.duration);
+    lane.classList.add('drop-over');
+    ghost.hidden = false;
+    ghost.style.left = `${g.left}px`; ghost.style.width = `${Math.max(4, g.width)}px`;
+    ghost.title = `${t.m.name} @ ${fmtTime(g.start)}`;
+  });
+  lane.addEventListener('dragleave', (e) => { if (!lane.contains(e.relatedTarget)) clear(); });
+  lane.addEventListener('drop', (e) => {
+    if (!isMusicDrag(e)) return;
+    e.preventDefault(); e.stopPropagation(); clear();
+    const t = target(); endMusicDrag();
+    if (!t) { if (!selectedVideo()) toast('Select a video first', 'warn'); return; }
+    const r = lane.getBoundingClientRect();
+    const g = dropPlacement(e.clientX - r.left, r.width, t.v.probe.duration, t.m.duration);
+    // Store subscription reloads the music buffer and reschedules the engine (playback continues).
+    updateSettings(t.v.id, { musicId: t.m.id, offsetMs: toMs(g.start) });
+  });
+  document.addEventListener('dragend', clear);
+}
+
 function seekFromEvent(e) {
   const v = selectedVideo(); if (!v || !v.probe) return;
   const r = ui.lane.getBoundingClientRect();
@@ -176,7 +216,7 @@ export function initTimeline() {
     title: $('timeline-title'), play: $('btn-play'), stop: $('btn-stop'), time: $('time-display'),
     body: $('timeline-body'), waveCanvas: $('wave-canvas'), lane: $('music-lane'), block: $('music-block'),
     musicCanvas: $('music-canvas'), musicLabel: $('music-label'), trimmed: $('trimmed-badge'), trimmedStart: $('trimmed-start-badge'),
-    ruler: $('ruler'), playhead: $('playhead'), empty: $('timeline-empty'),
+    ruler: $('ruler'), playhead: $('playhead'), empty: $('timeline-empty'), ghost: $('drop-ghost'), placeholder: $('lane-placeholder'),
   });
   ui.play.addEventListener('click', () => engine.toggle());
   ui.stop.addEventListener('click', () => engine.stop());
@@ -187,6 +227,7 @@ export function initTimeline() {
     if (e.code === 'Space' && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || '')) { e.preventDefault(); engine.toggle(); }
   });
   setupDrag();
+  setupMusicDrop();
   engine.onChange(updatePlayhead);
   new ResizeObserver(() => redrawAll()).observe(ui.body);
 

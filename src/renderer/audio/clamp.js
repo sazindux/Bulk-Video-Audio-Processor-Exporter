@@ -50,5 +50,22 @@ export function musicBlock(start, musicDur, videoDur) {
 export const pxToSec = (x, w, videoDur) => (w > 0 ? (x / w) * videoDur : 0);
 export const secToPx = (sec, w, videoDur) => (videoDur > 0 ? (sec / videoDur) * w : 0);
 
+/**
+ * Placement for a track dropped from the pool at pointer x (px, relative to the lane's left edge).
+ * The block's LEFT edge follows the pointer; start is clamped to [0, maxStart] (a drop never skips
+ * the beginning of the track). Returns { start, left, width } with left/width in px.
+ */
+export function dropPlacement(x, laneW, videoDur, musicDur) {
+  videoDur = Math.max(0, Number(videoDur) || 0);
+  musicDur = Math.max(0, Number(musicDur) || 0);
+  if (laneW <= 0 || videoDur <= 0 || musicDur <= 0) return { start: 0, left: 0, width: 0 };
+  const start = Math.max(0, clampStart(pxToSec(x, laneW, videoDur), musicDur, videoDur));
+  const width = Math.min(musicDur, videoDur - start);
+  return { start, left: secToPx(start, laneW, videoDur), width: Math.max(0, secToPx(width, laneW, videoDur)) };
+}
+
+/** True when a DataTransfer type list belongs to an OS file drag (import), false for internal drags. */
+export const isFileDrag = (types) => Array.from(types || []).includes('Files');
+
 /** Round to ms, avoiding float noise in the offset field (sign preserved). */
 export const toMs = (sec) => Math.round(sec * 1000);

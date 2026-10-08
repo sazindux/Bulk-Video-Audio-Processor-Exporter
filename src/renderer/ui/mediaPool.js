@@ -5,6 +5,8 @@ import {
 } from '../state.js';
 import { notify } from '../state.js';
 import { el, extOf, fmtTime, toast, blobUrl } from '../util.js';
+import { isFileDrag } from '../audio/clamp.js';
+import { beginMusicDrag, endMusicDrag } from './musicDrag.js';
 
 const api = window.bvape;
 const $ = (id) => document.getElementById(id);
@@ -52,12 +54,14 @@ async function loadMusic(m) {
 
 /* ---------- drag & drop ---------- */
 
+/** OS-file import drop zone. Internal drags (music -> timeline) carry no "Files" type and are ignored here. */
 function setupDrop(target, filterExt) {
   let depth = 0;
-  target.addEventListener('dragenter', (e) => { e.preventDefault(); depth++; target.classList.add('over'); });
-  target.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
-  target.addEventListener('dragleave', () => { if (--depth <= 0) { depth = 0; target.classList.remove('over'); } });
+  target.addEventListener('dragenter', (e) => { if (!isFileDrag(e.dataTransfer.types)) return; e.preventDefault(); depth++; target.classList.add('over'); });
+  target.addEventListener('dragover', (e) => { if (!isFileDrag(e.dataTransfer.types)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  target.addEventListener('dragleave', (e) => { if (!isFileDrag(e.dataTransfer.types)) return; if (--depth <= 0) { depth = 0; target.classList.remove('over'); } });
   target.addEventListener('drop', (e) => {
+    if (!isFileDrag(e.dataTransfer.types)) return;
     e.preventDefault(); e.stopPropagation(); depth = 0; target.classList.remove('over');
     const paths = [...e.dataTransfer.files].map((f) => api.pathForFile(f)).filter(Boolean);
     const filtered = filterExt ? paths.filter((p) => filterExt.includes(extOf(p))) : paths;
@@ -126,7 +130,13 @@ function renderMusic() {
   list.replaceChildren(...state.music.map((m) => {
     const playing = preview.id === m.id;
     const sub = m.error ? m.error : m.probe ? `${fmtTime(m.duration)} · ${m.probe.acodec} · ${m.probe.sampleRate} Hz` : 'probing…';
-    return el('li', { class: 'item' },
+    const draggable = !m.error && m.duration > 0;
+    return el('li', {
+      class: `item${draggable ? ' draggable' : ''}`, draggable: draggable ? 'true' : 'false',
+      title: draggable ? 'Drag onto the timeline to use this track' : '',
+      ondragstart: (e) => { if (!draggable) return e.preventDefault(); beginMusicDrag(e, m.id); e.currentTarget.classList.add('dragging'); },
+      ondragend: (e) => { endMusicDrag(); e.currentTarget.classList.remove('dragging'); },
+    },
       el('button', { class: `play${playing ? ' playing' : ''}`, title: playing ? 'Stop' : 'Preview', text: playing ? '■' : '▶', disabled: !!m.error,
         onclick: (e) => { e.stopPropagation(); togglePreview(m); } }),
       el('div', { class: 'meta' },

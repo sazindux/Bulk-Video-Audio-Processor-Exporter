@@ -1,7 +1,7 @@
 # Handoff: Bulk Video Audio Processor
-Last updated: 2026-10-07 | Last commit: fix(task-3): README offset guide, CI sync, handoff
+Last updated: 2026-10-08 | Last commit: feat(task-8): drag music from pool onto the timeline
 
-Bugfix round 2 (negative music offsets + folder picker). Round 1 (tasks 0-7, initial build) is DONE and described under "Decisions made"/"Architecture notes".
+Round 3 (Tasks 8-11: music drag-to-timeline + muted video preview). Round 1 (tasks 0-7, initial build) and bugfix round 2 (tasks 0-3 below) are DONE and described under "Decisions made"/"Architecture notes".
 
 ## Task status
 | Task | Name | Status (PENDING / IN PROGRESS / DONE) |
@@ -10,11 +10,14 @@ Bugfix round 2 (negative music offsets + folder picker). Round 1 (tasks 0-7, ini
 | 1 | Timeline Dragging & Negative Offsets | DONE |
 | 2 | Preview & FFmpeg Filter Updates | DONE |
 | 3 | Verification & CI Sync | DONE |
+| 8 | Feature A: drag music from pool to timeline | DONE |
+| 9 | Preview backend: bvape-media protocol, Range, preview:url IPC, ffmpeg proxy fallback | PENDING |
+| 10 | Preview UI: card, toggle + pref, sync logic + tests | PENDING |
+| 11 | Polish: v1.1.0, README, manual checklist | PENDING |
 
 ## Next steps (exact, for the very next chat)
-- All 4 bugfix-round-2 tasks are DONE. `npm test` 38/38 green. `ci/build.yml` == `.github/workflows/build.yml` (unchanged this round; workflow runs tests + electron-builder on windows-latest).
-- Remaining (user-driven): check the Actions run for commit `fix(task-3)` is green, download the portable exe artifact, and run the round-2 manual checks below. File any findings under "Known issues" as new tasks.
-- Round-2 manual checks (Windows): (a) Output folder picker shows the real path (not `[object Object]`), export writes into it, *Open folder* opens that folder. (b) Drag the music block left past 0 -> block pins to the left with a hatched strip + `◀ skips` badge; *Music start* shows a negative value; typing `-10.5` works; preview from 0:00 plays the song from 10.5 s in; exported file matches the preview.
+- Start Task 9 (main process only). Plan: `protocol.registerSchemesAsPrivileged([{scheme:'bvape-media', privileges:{standard:true, secure:true, supportFetchAPI:true, stream:true}}])` before `app.whenReady` in `main.js`; new `src/main/preview.js` (CommonJS) with pure `parseRange(header, size)` -> `{start,end}|null` (+ `test/preview.test.js`), token map (`registerPreview(path)` -> `bvape-media://m/<token>`, only .mp4/.mov/.mkv), `protocol.handle('bvape-media', handler)` doing manual Range via `fs.createReadStream` + `Readable.toWeb` (206/Accept-Ranges/Content-Range/Content-Length/Content-Type; 416 on bad range; 404 unknown token), `previewProxy(path)` -> `<temp>/bvape/<hash>_preview.mp4` via ffmpeg args array `-an -vf scale=-2:360 -c:v libx264 -preset ultrafast -crf 30 -pix_fmt yuv420p -movflags +faststart`, killable (`cancelPreviewProxy()`), cached. IPC `preview:url(path)`, `preview:proxy(path)`, `preview:cancel()`; preload `previewUrl`, `previewProxy`, `cancelPreview`. CSP: add `bvape-media:` to `media-src`. Proxies live in the existing temp dir so the will-quit cleanup covers them.
+- Round-2 manual checks still open for the user (see checklist).
 
 ## Decisions made (do not revisit)
 - Electron 33.x, electron-builder 25.x. `npm test` = `node --test` (auto-discovers `test/*.test.js`, works on Node 20 and 22).
@@ -38,6 +41,7 @@ Bugfix round 2 (negative music offsets + folder picker). Round 1 (tasks 0-7, ini
 - Size: `files` excludes `ffprobe-static/bin/{darwin,linux}` (~230 MB that would otherwise be packed into the asar) and ffmpeg-static install scripts. Local `--linux --dir` check: app.asar 384 KB + unpacked ffmpeg only.
 - `src/shared/package.json` = `{"type":"module"}` so main can `import()` filename.js without warnings.
 - Smoke-tested locally with ffmpeg-static linux binaries + lavfi media (probe, thumb, proxy, errors) - works.
+- Task 8 (drag music -> timeline): no `inMs` setting exists (negative offset = skip), so a drop sets only `musicId` + `offsetMs` (start clamped to `[0, maxStart]`, volumes kept). `dropPlacement(x, laneW, videoDur, musicDur)` + `isFileDrag(types)` in `clamp.js`. Dragged id lives in `src/renderer/ui/musicDrag.js` (module var + MIME `application/x-bvape-music`). All OS-file drop zones in `mediaPool.setupDrop` ignore drags without a `Files` type. Lane shows `#lane-placeholder` when a probed video has no music; `#drop-ghost` follows the pointer (left edge) with width = min(track, remaining).
 
 ## Architecture notes
 - File map:
@@ -59,7 +63,8 @@ Bugfix round 2 (negative music offsets + folder picker). Round 1 (tasks 0-7, ini
   - `src/main/exporter.js` -> buildFilter, buildArgs (args array), parseProgress, runExport (spawn, progress, cancel), resolveOutputPath (sanitize + unique + never source), startQueue (sequential, sends export:* events, optional verify hook)
   - `src/renderer/ui/exportPanel.js` -> buildPayload from state, start/cancel/open folder, mirrors events into settings.status/progress/outputPath/verification, overall bar
   - `src/renderer/ui/inspector.js` -> settings form bindings, outputExt(v), apply-all (music/offset re-clamped per video), output folder picker (persisted)
-  - `src/renderer/ui/mediaPool.js` -> importPaths (filters by ext, probes 3 at a time), drag-drop (pathForFile), video/music lists, music preview `<audio>` via blob URL
+  - `src/renderer/ui/mediaPool.js` -> importPaths (filters by ext, probes 3 at a time), drag-drop (pathForFile), video/music lists (music items `draggable`), music preview `<audio>` via blob URL
+  - `src/renderer/ui/musicDrag.js` -> shared dragged-music-id state for pool -> timeline drags
   - `test/*.test.js` -> node:test unit tests
   - `.github/workflows/build.yml` -> win portable build, artifact, release on tags
 - IPC channels (invoke; media:* return `{ok:true,value}` or `{ok:false,error}` with ffmpeg stderr tail):
@@ -97,3 +102,5 @@ Bugfix round 2 (negative music offsets + folder picker). Round 1 (tasks 0-7, ini
 - [ ] Inspector shows `Metadata: verified clean`; Explorer Properties -> Details has no title/author/date/GPS; MediaInfo shows no `Writing application`/`Encoded date`/handler strings.
 - [ ] Exporting twice to the same folder creates ` (1)` copies; exporting into the source folder never overwrites the source.
 - [ ] Paths with spaces/unicode (e.g. `C:\Vidéos test\日本.mp4`) import and export correctly.
+- [ ] Round 2: Output folder picker shows the real path (not `[object Object]`), export writes into it, *Open folder* opens it. Drag the music block left past 0 -> hatched strip + `◀ skips` badge; *Music start* negative; typing `-10.5` works; preview from 0:00 plays the song from 10.5 s in; export matches.
+- [ ] Round 3 (Task 8): drag a track from the Music pool over the lane -> lane highlights, ghost block's left edge follows the pointer, ghost shrinks near the end for long tracks; drop at several positions -> block + waveform appear there, *Music start* matches; drop onto an existing block replaces the track; drop while playing keeps playing; drop with no video selected -> toast; dragging OS files into the pool/timeline still imports.
